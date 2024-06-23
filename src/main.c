@@ -13,8 +13,9 @@
 
 #include <sys/mman.h>
 
-#define likely(cond) (cond)
-#define unlikely(cond) (cond)
+#define likely(cond) __builtin_expect(!!(cond), 1)
+#define unlikely(cond) __builtin_expect(!!(cond), 0)
+#define aligned(align) __attribute__((aligned((align))))
 
 static inline float
 square(float x)
@@ -40,7 +41,7 @@ arena_init(struct arena *arena, size_t size)
 {
 	arena->memory = mmap(NULL, size, PROT_READ | PROT_WRITE,
 		MAP_PRIVATE | MAP_ANON, -1, 0);
-	if (arena->memory == MAP_FAILED)
+	if (unlikely(arena->memory == MAP_FAILED))
 		return -1;
 
 	arena->curr = arena->memory;
@@ -66,7 +67,7 @@ void *
 arena_malloc(struct arena *arena, size_t size)
 {
 	void *item = arena->curr;
-	if (item > arena->end)
+	if (unlikely(item > arena->end))
 		return NULL;
 	arena->curr = (void *)((uintptr_t)arena->curr + size);
 	return item;
@@ -113,13 +114,13 @@ init_tls(unsigned threads, size_t arena_sz)
 
 	tls = malloc(
 		sizeof(struct threads) + (sizeof(struct thread_state) * threads));
-	if (tls == NULL)
+	if (unlikely(tls == NULL))
 		return -1;
 	tls->len = threads;
 	for (id = 0; id < threads; id++) {
 		tls->states[id].id = id;
 		// TODO: handle error, unmap
-		if (arena_init(&tls->states[id].arena, arena_sz))
+		if (unlikely(arena_init(&tls->states[id].arena, arena_sz)))
 			goto error;
 	}
 
@@ -255,7 +256,7 @@ quadrant_malloc_init(struct arena *arena, struct particle center, float x,
 	float y, float len)
 {
 	struct quadrant *quad = arena_malloc(arena, sizeof(struct quadrant));
-	if (quad == NULL)
+	if (unlikely(quad == NULL))
 		return NULL;
 
 	*quad = (struct quadrant) {
@@ -347,7 +348,7 @@ static struct vec2
 quadrant_update_force(struct quadrant *quad, const struct particle *part,
 	float theta, struct vec2 *force)
 {
-	if (quadrant_is_leaf(quad)) {
+	if (unlikely(quadrant_is_leaf(quad))) {
 		if (!vec2_eql(&quad->center, &part->pos)) {
 			const struct vec2 gf = gforce(part, &quad->center);
 			vec2_addassign(force, &gf);
@@ -382,7 +383,7 @@ particle_tree_init(unsigned tid)
 	const size_t size = sizeof(struct particle_tree)
 		+ (sizeof(struct moving_particle) * options.particles);
 	struct particle_tree *tree = malloc(size);
-	if (tree == NULL)
+	if (unlikely(tree == NULL))
 		return NULL;
 
 	*tree = (struct particle_tree) {
@@ -399,12 +400,12 @@ particle_tree_build(struct particle_tree *tree, float radius)
 {
 	struct arena *arena = thread_arena(tree->tid);
 
-	if (tree->root != NULL)
+	if (likely(tree->root != NULL))
 		arena_reset(arena);
 
 	tree->root = quadrant_malloc_init(arena, tree->particles[0].part,
 		-1 * radius, -1 * radius, 2 * radius);
-	if (tree->root == NULL)
+	if (unlikely(tree->root == NULL))
 		return -1;
 
 	for (size_t i = 0; i < tree->num_particles; i++) {
