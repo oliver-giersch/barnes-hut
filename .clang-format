@@ -1,0 +1,16 @@
+BasedOnStyle: WebKit
+UseTab: Always
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+AlignAfterOpenBracket: DontAlign
+AlignConsecutiveAssignments: true
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOnNextLine: false
+AlwaysBreakAfterDefinitionReturnType: All
+BinPackArguments: true
+BinPackParameters: true
+ColumnLimit: 80
+PointerAlignment: Right
+BreakBeforeTernaryOperators: true
+AlwaysBreakBeforeMultilineStrings: true
