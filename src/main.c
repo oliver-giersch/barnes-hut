@@ -75,8 +75,8 @@ arena_malloc(struct arena *arena, size_t size)
 
 struct work_slice {
 	struct moving_particle *from;
+	size_t from_offset;
 	size_t end;
-	size_t shared_offset;
 };
 
 struct thread_state {
@@ -84,6 +84,7 @@ struct thread_state {
 	struct arena arena;
 	struct particle_tree *tree;
 	struct work_slice slice;
+	float max_dist;
 };
 
 static struct threads {
@@ -180,6 +181,13 @@ static inline struct vec2
 vec2_mul(struct vec2 v, float t)
 {
 	vec2_mulassign(&v, t);
+	return v;
+}
+
+static inline struct vec2
+vec2_div(struct vec2 v, float t)
+{
+	vec2_divassign(&v, t);
 	return v;
 }
 
@@ -424,9 +432,22 @@ particle_tree_propagate(struct particle_tree *tree)
 	// pthread_barrier
 }
 
-void
-particle_tree_simulate(struct particle_tree *tree)
+float
+particle_tree_simulate(struct particle_tree *tree,
+	const struct work_slice *slice)
 {
+	struct vec2 force  = {};
+	struct vec2 center = {}; // shouldn't center be (r,r)?
+	float max_dist	   = 0.0;
+	float dist_squared = 0.0;
+
+	for (size_t p = 0; p < slice->end; p++) {
+		struct particle *part = &slice->from[p];
+		quadrant_update_force(tree->root, part, options.theta, &force);
+		const struct vec2 delta_force = vec2_div(force, part->mass);
+		vec2_addassign(&slice->from[p].vel, &delta_force);
+	}
+
 	// wait for condvar
 	// simulate
 	// propagate particle positions
@@ -450,16 +471,19 @@ worker_init(unsigned tid)
 	if ((state->tree = particle_tree_init(tid)) == NULL)
 		return -1;
 
-	const size_t work_slice = options.particles / options.threads;
-	const size_t start		= (size_t)tid * work_slice;
+	size_t work_slice	   = options.particles / options.threads;
+	const size_t remainder = options.particles % options.threads;
+	const size_t start	   = (size_t)tid * work_slice;
+	if (tid == options.threads - 1)
+		work_slice += remainder;
 
 	memcpy(&state->tree->particles, shared_particles,
 		sizeof(struct moving_particle) * options.particles);
 
 	state->slice = (struct work_slice) {
-		.from		   = &state->tree->particles[start],
-		.end		   = work_slice,
-		.shared_offset = start,
+		.from		 = &state->tree->particles[start],
+		.end		 = work_slice,
+		.from_offset = start,
 	};
 
 	return 0;
@@ -475,11 +499,19 @@ worker_step(struct thread_state *state, unsigned step)
 	// memcpy global particles back into local copy
 
 	(void)pthread_barrier_wait(&barrier);
-	particle_tree_simulate(&state->tree);
-	// memcpy local work slice into shared
+	// re-load state->radius?
+	const float radius	= particle_tree_simulate(&state->tree, &state->slice);
+	state->tree->radius = radius;
+
+	memcpy(&shared_particles[state->slice.from_offset], state->slice.from,
+		sizeof(struct moving_particle) * state->slice.end);
+
 	(void)pthread_barrier_wait(&barrier);
-	// all threads have copied their local results
+	// all threads have copied their loca^l results
 	// now copy all shared particles back to our local copy
+
+	// main only: load all farthest - from - center points
+	// calculate new universe radius, propagate to all thread states!
 }
 
 void *
@@ -544,14 +576,19 @@ init_particles(void)
 	if (particles == NULL)
 		return NULL;
 
-	const float d	 = options.radius * 2;
-	const float minx = options.radius * -1;
-	const float miny = minx;
+	// TODO: Universe center is at (r, r)
+	// - make all initialization around (0, 0), then translate by adding (r, r)
+	// - get random x first, between [-r, r]
+	// - for y to be located within the circle, the random y-pos must be between
+	//   [-sqrt(r^2 - x^2), sqrt(r^2 - x^2)]
+	const float r = options.radius;
+	const float d = r * 2;
 
 	for (size_t p = 0; p < options.particles; p++) {
-		const float x		   = minx + (randomf() * d);
-		const float y		   = miny + (randomf() * d);
-		particles[p].part.pos  = (struct vec2) { x, y };
+		const float x		   = (randomf() * d) - r;
+		const float tmp		   = sqrtf(r * r - x * x);
+		const float y		   = (randomf() * 2 * tmp) - tmp;
+		particles[p].part.pos  = (struct vec2) { x + r, y + r };
 		particles[p].part.mass = options.max_mass;
 		particles[p].vel	   = zvec;
 	}
