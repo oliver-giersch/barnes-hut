@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE 700
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -7,6 +9,7 @@
 #include <assert.h> // TODO: use custom assert
 #include <math.h>
 #include <pthread.h>
+#include <string.h>
 
 #include <sys/mman.h>
 
@@ -69,10 +72,17 @@ arena_malloc(struct arena *arena, size_t size)
 	return item;
 }
 
+struct work_slice {
+	struct moving_particle *from;
+	size_t end;
+	size_t shared_offset;
+};
+
 struct thread_state {
 	unsigned id;
 	struct arena arena;
 	struct particle_tree *tree;
+	struct work_slice slice;
 };
 
 static struct threads {
@@ -80,11 +90,19 @@ static struct threads {
 	struct thread_state states[];
 } *tls = NULL;
 
+static struct moving_particles *shared_particles;
+
 static inline struct arena *
 thread_arena(unsigned id)
 {
 	assert(tls != NULL && "TLS uninitialized");
 	return &tls->states[id].arena;
+}
+
+static struct threads *
+init_tls2(void)
+{
+	return NULL;
 }
 
 // TODO: mmap arena memory on each thread for NUMA awareness (firsttouch)
@@ -119,6 +137,9 @@ error:
 struct vec2 {
 	float x, y;
 };
+
+static const struct vec2 zvec = { 0.0, 0.0 };
+static const struct vec2 uvec = { 1.0, 1.0 };
 
 static inline void
 vec2_addassign(struct vec2 *v, const struct vec2 *u)
@@ -355,23 +376,22 @@ struct particle_tree {
 	struct moving_particle particles[];
 };
 
-static int
-particle_tree_init(struct particle_tree *tree, unsigned tid,
-	size_t num_particles)
+static struct particle_tree *
+particle_tree_init(unsigned tid)
 {
-	struct moving_particle *particles
-		= malloc(sizeof(struct moving_particle) * num_particles);
-	if (particles == NULL)
-		return -1;
+	const size_t size = sizeof(struct particle_tree)
+		+ (sizeof(struct moving_particle) * options.particles);
+	struct particle_tree *tree = malloc(size);
+	if (tree == NULL)
+		return NULL;
 
 	*tree = (struct particle_tree) {
 		.tid		   = tid,
 		.root		   = NULL,
-		.num_particles = num_particles,
-		.particles	   = particles,
+		.num_particles = options.particles,
 	};
 
-	return 0;
+	return tree;
 }
 
 int
@@ -415,21 +435,66 @@ particle_tree_simulate(struct particle_tree *tree)
 static pthread_barrier_t barrier;
 
 static int
-worker_step(unsigned tid, unsigned step)
+worker_init(unsigned tid)
+{
+	static const size_t arena_size = (size_t)1 << 20;
+
+	assert(tls != NULL && "TLS not initialized");
+	assert(shared_particles != NULL);
+	struct thread_state *state = &tls->states[tid];
+
+	state->id = tid;
+	if (arena_init(&state->arena, arena_size))
+		return -1;
+	if ((state->tree = particle_tree_init(tid)) == NULL)
+		return -1;
+
+	const size_t work_slice = options.particles / options.threads;
+	const size_t start		= (size_t)tid * work_slice;
+
+	memcpy(&state->tree->particles, shared_particles,
+		sizeof(struct moving_particle) * options.particles);
+
+	state->slice = (struct work_slice) {
+		.from		   = &state->tree->particles[start],
+		.end		   = work_slice,
+		.shared_offset = start,
+	};
+
+	return 0;
+}
+
+static void
+worker_step(struct thread_state *state, unsigned step)
 {
 	// pthread_barrier_wait(&barrier);
 	// run simulation
 	// update shared particle array (only slice)
 	// pthread_barrier_wait(&barrier);
 	// memcpy global particles back into local copy
+
+	(void)pthread_barrier_wait(&barrier);
+	particle_tree_simulate(&state->tree);
+	// memcpy local work slice into shared
+	(void)pthread_barrier_wait(&barrier);
+	// all threads have copied their local results
+	// now copy all shared particles back to our local copy
 }
 
 void *
 barnes_hut_worker(void *thread_arg)
 {
 	const unsigned tid = (unsigned)((uintptr_t)thread_arg);
-	// TODO: init thread state
-	// initialize particle tree, work chunk, etc
+	if (worker_init(tid))
+		// TODO: set global errno?
+		return NULL;
+
+	struct thread_state *state = &tls->states[tid];
+	for (unsigned step = 0; step < options.steps; step++) {
+		worker_step(state, step);
+	}
+
+	return NULL;
 }
 
 struct options {
@@ -461,6 +526,38 @@ print_usage(const char *bin)
 		"--theta\n");
 }
 
+static inline float
+randomf(void)
+{
+	return (float)random() / (float)RAND_MAX;
+}
+
+static struct moving_particle *
+init_particles(void)
+{
+	if (options.seed != 0)
+		srandom(options.seed);
+
+	struct moving_particle *particles
+		= malloc(sizeof(struct moving_particle) * options.particles);
+	if (particles == NULL)
+		return NULL;
+
+	const float d	 = options.radius * 2;
+	const float minx = options.radius * -1;
+	const float miny = minx;
+
+	for (size_t p = 0; p < options.particles; p++) {
+		const float x		   = minx + (randomf() * d);
+		const float y		   = miny + (randomf() * d);
+		particles[p].part.pos  = (struct vec2) { x, y };
+		particles[p].part.mass = options.max_mass;
+		particles[p].vel	   = zvec;
+	}
+
+	return particles;
+}
+
 int
 main(int argc, char *argv[argc])
 {
@@ -468,23 +565,38 @@ main(int argc, char *argv[argc])
 	// pin pthread_current() to cpu 0
 	// initialize random particle list
 
+	shared_particles = init_particles();
+	if (shared_particles == NULL)
+		return -1;
+
+	tls = init_tls2();
+	if (tls == NULL)
+		return -1;
+
+	pthread_barrierattr_t attr;
+	pthread_barrierattr_init(&attr);
+	pthread_barrier_init(&barrier, &attr, options.threads);
+
 	// spawn p - 1 threads
 	pthread_t *threads = malloc(sizeof(pthread_t) * options.threads);
 	if (threads == NULL)
 		return -1;
 
 	unsigned t;
-	for (t = 0; t < options.threads; t++) {
+	for (t = 0; t < options.threads + 1; t++) {
 		pthread_attr_t attrs;
 		pthread_attr_init(&attrs);
-		if (pthread_create(&threads[t], &attrs, barnes_hut_worker, (void *)t))
+		if (pthread_create(&threads[t], &attrs, barnes_hut_worker,
+				(void *)(t + 1)))
 			goto kill;
 		pthread_attr_destroy(&attrs);
 	}
 
+	if (worker_init(0))
+		goto kill;
+
 	for (unsigned step = 0; step < options.steps; step++) {
-		// run thread step fn
-		//
+		worker_step(0, step);
 	}
 
 kill:
