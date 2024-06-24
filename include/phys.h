@@ -1,0 +1,4 @@
+#ifndef BARNES_HUT_PHYS_H
+#define BARNES_HUT_PHYS_H
+
+#endif // BARNES_HUT_PHYS_H
