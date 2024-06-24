@@ -30,12 +30,14 @@ feql(float a, float b)
 	return fabsf(a - b) <= eps;
 }
 
+// declare & define in arena.h
 struct arena {
 	void *memory;
 	void *curr;
 	void *end;
 };
 
+// declare in arena.h
 int
 arena_init(struct arena *arena, size_t size)
 {
@@ -63,6 +65,7 @@ arena_reset(struct arena *arena)
 	arena->curr = arena->memory;
 }
 
+// define in arena.h (static inline)
 void *
 arena_malloc(struct arena *arena, size_t size)
 {
@@ -73,20 +76,23 @@ arena_malloc(struct arena *arena, size_t size)
 	return item;
 }
 
+// declare & define in phys.h
 struct work_slice {
 	struct moving_particle *from;
 	size_t from_offset;
 	size_t end;
 };
 
+// main.c
 struct thread_state {
 	unsigned id;
 	struct arena arena;
 	struct particle_tree *tree;
 	struct work_slice slice;
-	float max_dist;
+	float max_dist; // TODO: use as radius R/W, synchronized
 };
 
+// main.c
 static struct threads {
 	unsigned len;
 	struct thread_state states[];
@@ -136,6 +142,7 @@ error:
 	return -1;
 };
 
+// declare & define in phys.h, all fns stay in phys.c
 struct vec2 {
 	float x, y;
 };
@@ -220,6 +227,7 @@ struct moving_particle {
 	struct vec2 vel;
 };
 
+// phys.c
 static struct vec2
 gforce(const struct particle *p0, const struct particle *p1)
 {
@@ -242,6 +250,7 @@ gforce(const struct particle *p0, const struct particle *p1)
 	return result;
 }
 
+// phys.h (declare only!)
 struct quadrant {
 	// The quadrant's mass center.
 	struct particle center;
@@ -377,10 +386,11 @@ quadrant_update_force(struct quadrant *quad, const struct particle *part,
 	}
 }
 
+// declare in phys.h, define in phys.c
 struct particle_tree {
 	unsigned tid; // TODO: pass as argument to `particle_tree_build`
 	struct quadrant *root;
-	float theta, dt, radius; // TODO: take from global options
+	float theta, dt; // TODO: take from global options
 	size_t num_particles;
 	struct moving_particle particles[];
 };
@@ -403,6 +413,13 @@ particle_tree_init(unsigned tid)
 	return tree;
 }
 
+void
+particle_tree_sort(struct particle_tree *tree)
+{
+	return;
+}
+
+// public API, radius can be taken from thread state?
 int
 particle_tree_build(struct particle_tree *tree, float radius)
 {
@@ -432,6 +449,7 @@ particle_tree_propagate(struct particle_tree *tree)
 	// pthread_barrier
 }
 
+// define in phys.c, declare in phys.h, struct work_slice must be defined in phys.h!
 float
 particle_tree_simulate(struct particle_tree *tree,
 	const struct work_slice *slice)
@@ -499,10 +517,16 @@ worker_step(struct thread_state *state, unsigned step)
 	// memcpy global particles back into local copy
 
 	(void)pthread_barrier_wait(&barrier);
+	// TODO: adjust scale for display?
+	if (false) // options.optimize
+		if (step % 10 == 0)
+			particle_tree_sort(&state->tree);
 	// re-load state->radius?
+	if (particle_tree_build(&state->tree, 0.0))
+		return; // out of memory
 	const float radius	= particle_tree_simulate(&state->tree, &state->slice);
 	state->tree->radius = radius;
-
+	// TODO: put into function? maybe not, it only requires work slice to be known
 	memcpy(&shared_particles[state->slice.from_offset], state->slice.from,
 		sizeof(struct moving_particle) * state->slice.end);
 
@@ -559,6 +583,7 @@ print_usage(const char *bin)
 		"--theta\n");
 }
 
+// stays in main.c!
 static inline float
 randomf(void)
 {
