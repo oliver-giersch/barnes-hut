@@ -45,8 +45,8 @@ struct quadrant {
 };
 
 static inline bool quadrant_is_leaf(const struct quadrant *quad);
-static inline struct quadrant *quadrant_malloc(
-	struct arena *, struct particle center, float x, float y, float len);
+static inline struct quadrant *quadrant_malloc(struct arena *,
+	struct particle center, float x, float y, float len);
 static int quadrant_insert(struct quadrant *quad, const struct particle *part,
 	struct arena *arena);
 static int quadrant_insert_child(struct quadrant *quad,
@@ -73,7 +73,7 @@ particle_tree_init(void)
 		return NULL;
 
 	*tree = (struct particle_tree) {
-		.root = NULL,
+		.root		   = NULL,
 		.num_particles = options.particles,
 	};
 
@@ -87,8 +87,8 @@ particle_tree_build(struct particle_tree *tree, float radius,
 	if (likely(tree->root != NULL))
 		arena_reset(arena);
 
-	tree->root = quadrant_malloc(arena, tree->particles[0].part,
-		-1 * radius, -1 * radius, 2 * radius);
+	tree->root = quadrant_malloc(arena, tree->particles[0].part, -1 * radius,
+		-1 * radius, 2 * radius);
 	if (unlikely(tree->root == NULL))
 		return -1;
 
@@ -117,10 +117,10 @@ quadrant_malloc(struct arena *arena, struct particle center, float x, float y,
 		return NULL;
 
 	*quad = (struct quadrant) {
-		.center = center,
-		.x = x,
-		.y = y,
-		.len = len,
+		.center	  = center,
+		.x		  = x,
+		.y		  = y,
+		.len	  = len,
 		.children = { NULL, NULL, NULL, NULL },
 	};
 
@@ -135,8 +135,7 @@ quadrant_insert(struct quadrant *quad, const struct particle *part,
 
 	if (quadrant_is_leaf(quad)) {
 		if (vec2_eql(&quad->center.pos, &part->pos)
-			|| feql(quad->len / 2, 0.0)
-		) {
+			|| feql(quad->len / 2, 0.0)) {
 			quad->center.mass *= part->mass;
 			return res;
 		}
@@ -157,8 +156,8 @@ quadrant_insert_child(struct quadrant *quad, const struct particle *part,
 	struct arena *arena)
 {
 	const float len = quad->len / 2.0;
-	float x = quad->x;
-	float y = quad->y;
+	float x			= quad->x;
+	float y			= quad->y;
 	unsigned c;
 
 	if (vec2_is_contained(&part->pos, x, y, len))
@@ -179,7 +178,6 @@ quadrant_insert_child(struct quadrant *quad, const struct particle *part,
 		return -1;
 	return 0;
 }
-
 
 static void
 quadrant_update_force(struct quadrant *quad, const struct particle *part,

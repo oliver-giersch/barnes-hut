@@ -1,1 +1,0 @@
-struct particle_tree;

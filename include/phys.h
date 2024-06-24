@@ -24,7 +24,14 @@ struct moving_particle {
 };
 
 // A consecutive view into the global array of particles.
-struct particle_slice;
+struct particle_slice {
+	// The slice's offset in the source array.
+	size_t offset;
+	// The slice's length.
+	size_t len;
+	// The slice's start pointer.
+	struct moving_particle *from;
+};
 
 // A four-way partition of a 2-dimensional space containing particles.
 struct quadrant;
