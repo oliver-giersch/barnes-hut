@@ -1,4 +1,4 @@
-#include "../include/phys.h"
+#include "barnes-hut/phys.h"
 
 #include <complex.h>
 #include <stdbool.h>
@@ -6,10 +6,11 @@
 #include <stdlib.h>
 
 #include <math.h>
+#include <string.h>
 
-#include "../include/arena.h"
-#include "../include/common.h"
-#include "../include/options.h"
+#include "barnes-hut/arena.h"
+#include "barnes-hut/common.h"
+#include "barnes-hut/options.h"
 
 static inline float
 sq(float x)
@@ -100,6 +101,20 @@ particle_tree_build(struct particle_tree *tree, float radius,
 
 	quadrant_update_center(tree->root);
 	return 0;
+}
+
+void
+particle_tree_sync(struct particle_tree *tree,
+	const struct particle_slice *slice, struct moving_particle particles[])
+{
+	// Copy everything before the slice over into the local particle slice.
+	memcpy(&tree->particles[0], &particles[0],
+		sizeof(struct moving_particle) * slice->offset);
+	// Copy everything after the slice over into the local particle slice.
+	const size_t after = slice->offset + slice->len;
+	const size_t len   = options.particles - after;
+	memcpy(&tree->particles[after], &particles[after],
+		sizeof(struct moving_particle) * len);
 }
 
 static inline bool

@@ -1,6 +1,8 @@
 #ifndef BARNES_HUT_PHYS_H
 #define BARNES_HUT_PHYS_H
 
+#include <stddef.h>
+
 // A 2-dimensional vector.
 struct vec2 {
 	float x, y;
@@ -60,5 +62,10 @@ int particle_tree_build(struct particle_tree *tree, float radius,
 // Returns the furthest distance to the center of all updated particles.
 float particle_tree_simulate(struct particle_tree *tree,
 	const struct particle_slice *slice);
+
+// Synchronizes the tree's local array of particles with the global one,
+// excluding every particle contained by the given slice.
+void particle_tree_sync(struct particle_tree *tree,
+	const struct particle_slice *slice, struct moving_particle particles[]);
 
 #endif // BARNES_HUT_PHYS_H

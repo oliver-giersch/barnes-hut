@@ -1,6 +1,7 @@
 #ifndef BARNES_HUT_OPTIONS_H
 #define BARNES_HUT_OPTIONS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 // The global options and settings.

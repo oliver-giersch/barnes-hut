@@ -26,7 +26,7 @@ all: $(EXE)
 $(EXE): $(OBJ) Makefile
 	$(LD) $(LDFLAGS) $< -o $@
 
-$(OBJ): %.o: %.s
+$(OBJ): %.o: %.c
 	$(CC) $(CFLAGS) -c $< $(INC) $(LIB) -o $@
 
 clean:

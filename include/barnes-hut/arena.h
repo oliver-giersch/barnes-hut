@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "../include/common.h"
+#include "barnes-hut/common.h"
 
 struct arena {
 	void *memory;
