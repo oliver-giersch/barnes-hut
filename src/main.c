@@ -49,9 +49,8 @@ static struct moving_particle *init_particles(void);
 static void *thread_main(void *args);
 static int thread_init(unsigned id);
 static int thread_step(struct thread_state *state, unsigned step);
-
-static void sync_tree_particles(const struct particle_slice *slice,
-	struct moving_particle tree_particles[]);
+static void sync_tree_particles(struct moving_particle tree_particles[],
+	const struct particle_slice *slice);
 
 int
 main(int argc, char *argv[argc])
@@ -111,6 +110,17 @@ main(int argc, char *argv[argc])
 
 	return 0;
 kill:
+	// TODO: after joining: foreach thread_deinit()
+	// global error flag MUST be set!
+	for (unsigned i = 0; i < t; i++) {
+		void *thread_res;
+		pthread_join(threads[i], &thread_res);
+		thread_deinit(i);
+	}
+
+	free(threads);
+	free(tls);
+	free(particles);
 	return res;
 }
 
@@ -205,29 +215,37 @@ thread_init(unsigned id)
 	struct thread_state *state = &tls->states[id];
 	int res;
 
-	state->id = id;
-	if ((res = arena_init(&state->arena, arena_size)))
-		return res;
 	if ((state->tree = particle_tree_init()) == NULL)
 		return -1;
-
-	size_t len		   = options.particles / options.threads;
-	const size_t rem   = options.particles % options.threads;
-	const size_t start = (size_t)id * len;
-	if (id == options.threads - 1)
-		len += rem;
+	if ((res = arena_init(&state->arena, arena_size)))
+		return res;
 
 	struct moving_particle *tree_particles
 		= particle_tree_particles(state->tree);
+
+	const size_t len   = options.particles / options.threads;
+	const size_t rem   = options.particles % options.threads;
+	const size_t start = (size_t)id * len;
+
+	state->id	 = id;
 	state->slice = (struct particle_slice) {
 		.offset = start,
-		.len	= len,
+		.len	= (id == options.threads - 1) ? len + rem : len,
 		.from	= &tree_particles[start],
 	};
+	state->radius = options.radius;
 
-	sync_tree_particles(NULL, particle_tree_particles(state->tree));
+	sync_tree_particles(particle_tree_particles(state->tree), NULL);
 
 	return 0;
+}
+
+static void
+thread_deinit(unsigned id)
+{
+	struct thread_state *state = &tls->states[id];
+	free(state->tree);
+	arena_deinit(&state->arena);
 }
 
 static int
@@ -236,6 +254,7 @@ thread_step(struct thread_state *state, unsigned step)
 	int res;
 
 	pthread_barrier_wait(&barrier);
+	// TODO: check global error flag?
 	if (options.optimize && step % 10 == 0)
 		particle_tree_sort(state->tree);
 	float radius = state->radius;
@@ -247,15 +266,18 @@ thread_step(struct thread_state *state, unsigned step)
 		sizeof(struct moving_particle) * state->slice.len);
 	state->radius = radius;
 
+	// wait for all threads to complete the current simulation step and
+	// propagate their results, before synchronizing the global particle slice
+	// with the thread's local one.
 	pthread_barrier_wait(&barrier);
-	sync_tree_particles(&state->slice, particle_tree_particles(state->tree));
+	sync_tree_particles(particle_tree_particles(state->tree), &state->slice);
 
 	return 0;
 }
 
 static void
-sync_tree_particles(const struct particle_slice *slice,
-	struct moving_particle tree_particles[])
+sync_tree_particles(struct moving_particle tree_particles[],
+	const struct particle_slice *slice)
 {
 	if (slice == NULL) {
 		memcpy(tree_particles, particles,

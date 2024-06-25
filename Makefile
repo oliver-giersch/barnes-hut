@@ -1,6 +1,6 @@
 EXE     := barnes-hut
 CC      := /usr/bin/cc
-CFLAGS  := --std=c11 -Werror -Wall -Wpedantic
+CFLAGS  := --std=c11 -Werror -Wall -Wpedantic -MMD
 LD      := /usr/bin/cc
 LDFLAGS := -Wl,-lm
 
@@ -20,6 +20,8 @@ ifeq ($(BUILD),optimize)
 else ifeq ($(BUILD),optimize-lto)
 	CFLAGS  += $(COPTFLAGS) -flto
 	LDFLAGS += -Wl,-flto
+else
+	CFLAGS  += -g
 endif
 
 all: $(EXE)
@@ -29,6 +31,8 @@ $(EXE): $(OBJ) Makefile
 
 $(OBJ): %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@ $(INC) $(LIB)
+
+-include $(DEP)
 
 clean:
 	rm $(OBJ) $(DEP) $(EXE) 2> /dev/null || true

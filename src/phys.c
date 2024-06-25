@@ -144,8 +144,9 @@ float
 particle_tree_simulate(struct particle_tree *tree,
 	const struct particle_slice *slice)
 {
+	const struct vec2 center = zero_vec;
+
 	struct vec2 force  = zero_vec;
-	struct vec2 center = zero_vec; // shouldn't center be (r,r)?
 	float max_dist	   = 0.0;
 	float dist_squared = 0.0;
 
