@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE 700
+
 #include "barnes-hut/phys.h"
 
 #include <complex.h>
@@ -12,12 +14,16 @@
 #include "barnes-hut/common.h"
 #include "barnes-hut/options.h"
 
+static const struct vec2 zero_vec = { 0.0, 0.0 };
+
+// Returns x^2.
 static inline float
 sq(float x)
 {
 	return x * x;
 }
 
+// Returns `true` if a and b are equal.
 static inline bool
 feql(float a, float b)
 {
@@ -25,8 +31,12 @@ feql(float a, float b)
 	return fabsf(a - b) <= eps;
 }
 
-const struct vec2 zvec = { 0.0, 0.0 };
-const struct vec2 uvec = { 1.0, 1.0 };
+// Returns a random float between 0.0 and 1.0.
+static inline float
+randomf(void)
+{
+	return (float)random() / (float)RAND_MAX;
+}
 
 static inline void vec2_addassign(struct vec2 *v, const struct vec2 *u);
 static inline void vec2_subassign(struct vec2 *v, const struct vec2 *u);
@@ -38,11 +48,28 @@ static inline float vec2_dist(const struct vec2 *v, const struct vec2 *u);
 static inline bool vec2_is_contained(const struct vec2 *v, float x, float y,
 	float len);
 
+void
+moving_particle_randomize(struct moving_particle *part, float r, float d)
+{
+	const float x	 = randomf() * d - r;
+	const float ymax = sqrtf(sq(r) - sq(x));
+	const float y	 = randomf() * 2 * ymax - ymax;
+
+	*part = (struct moving_particle) {
+		.part = {
+			.pos = { x, y },
+			.mass = options.max_mass,
+		},
+		.vel = zero_vec,
+	};
+}
+
+#define QTREE_CHILDREN 4
 struct quadrant {
 	struct particle center;
 	float x, y, len;
 	unsigned bodies;
-	struct quadrant *children[4];
+	struct quadrant *children[QTREE_CHILDREN];
 };
 
 static inline bool quadrant_is_leaf(const struct quadrant *quad);
@@ -56,7 +83,10 @@ static struct vec2 quadrant_update_center(struct quadrant *quad);
 static void quadrant_update_force(struct quadrant *quad,
 	const struct particle *part, struct vec2 *force);
 
-struct vec2 gforce(const struct particle *p0, const struct particle *p1);
+static inline uint64_t morton_number(unsigned x, unsigned y, unsigned z);
+static inline int sort_by_z_curve(const struct moving_particle *p0,
+	const struct moving_particle *p1);
+static struct vec2 gforce(const struct particle *p0, const struct particle *p1);
 
 struct particle_tree {
 	struct quadrant *root;
@@ -81,6 +111,13 @@ particle_tree_init(void)
 	return tree;
 }
 
+void
+particle_tree_sort(struct particle_tree *tree)
+{
+	qsort(tree->particles, tree->num_particles, sizeof(struct moving_particle),
+		(__compar_fn_t)&sort_by_z_curve);
+}
+
 int
 particle_tree_build(struct particle_tree *tree, float radius,
 	struct arena *arena)
@@ -103,18 +140,37 @@ particle_tree_build(struct particle_tree *tree, float radius,
 	return 0;
 }
 
-void
-particle_tree_sync(struct particle_tree *tree,
-	const struct particle_slice *slice, struct moving_particle particles[])
+float
+particle_tree_simulate(struct particle_tree *tree,
+	const struct particle_slice *slice)
 {
-	// Copy everything before the slice over into the local particle slice.
-	memcpy(&tree->particles[0], &particles[0],
-		sizeof(struct moving_particle) * slice->offset);
-	// Copy everything after the slice over into the local particle slice.
-	const size_t after = slice->offset + slice->len;
-	const size_t len   = options.particles - after;
-	memcpy(&tree->particles[after], &particles[after],
-		sizeof(struct moving_particle) * len);
+	struct vec2 force  = zero_vec;
+	struct vec2 center = zero_vec; // shouldn't center be (r,r)?
+	float max_dist	   = 0.0;
+	float dist_squared = 0.0;
+
+	for (size_t p = 0; p < slice->len; p++) {
+		struct particle *part = &slice->from[p].part;
+		quadrant_update_force(tree->root, part, &force);
+
+		struct vec2 delta_force = force;
+		vec2_divassign(&delta_force, part->mass);
+		vec2_addassign(&slice->from[p].vel, &delta_force);
+
+		dist_squared = vec2_dist_sq(&center, &part->pos);
+		if (dist_squared > max_dist)
+			max_dist = dist_squared;
+
+		force = zero_vec;
+	}
+
+	return sqrtf(max_dist);
+}
+
+struct moving_particle *
+particle_tree_particles(struct particle_tree *tree)
+{
+	return &tree->particles[0];
 }
 
 static inline bool
@@ -184,7 +240,6 @@ quadrant_insert_child(struct quadrant *quad, const struct particle *part,
 	else
 		c = 3, x = x + len, y = y + len;
 
-	// check if this recursive call is tail-call optimized!
 	if (likely(quad->children[c] != NULL))
 		return quadrant_insert(quad->children[c], part, arena);
 
@@ -192,6 +247,30 @@ quadrant_insert_child(struct quadrant *quad, const struct particle *part,
 	if (unlikely(quad->children[c] == NULL))
 		return -1;
 	return 0;
+}
+
+static struct vec2
+quadrant_update_center(struct quadrant *quad)
+{
+	struct vec2 new_center;
+	if (quad->bodies <= 1) {
+		new_center = quad->center.pos;
+		vec2_mulassign(&new_center, quad->center.mass);
+		return new_center;
+	}
+
+	new_center = zero_vec;
+	for (unsigned c = 0; c < 4; c++) {
+		if (quad->children[c] != NULL) {
+			const struct vec2 child_center
+				= quadrant_update_center(quad->children[c]);
+			vec2_addassign(&new_center, &child_center);
+		}
+	}
+
+	vec2_divassign(&new_center, quad->center.mass);
+	quad->center.pos = new_center;
+	return new_center;
 }
 
 static void
@@ -212,7 +291,7 @@ quadrant_update_force(struct quadrant *quad, const struct particle *part,
 		const struct vec2 gf = gforce(part, &quad->center);
 		vec2_addassign(force, &gf);
 	} else {
-		for (unsigned c = 0; c < 4; c++) {
+		for (unsigned c = 0; c < QTREE_CHILDREN; c++) {
 			if (quad->children[c] != NULL)
 				quadrant_update_force(quad->children[c], part, force);
 		}
@@ -262,4 +341,59 @@ static inline float
 vec2_dist(const struct vec2 *v, const struct vec2 *u)
 {
 	return sqrtf(vec2_dist_sq(v, u));
+}
+
+static inline bool
+vec2_is_contained(const struct vec2 *v, float x, float y, float len)
+{
+	return (v->x >= x && v->x <= x + len) //  x
+		&& (v->y >= y && v->y <= y + len); // y
+}
+
+static inline uint64_t
+morton_number(unsigned x, unsigned y, unsigned z)
+{
+	uint64_t res = 0;
+
+	for (uint64_t i = 0; i < sizeof(uint64_t) * 8 / 3; i++)
+		res |= ((x & ((uint64_t)1 << i)) << 2 * i)
+			| ((y & ((uint64_t)1 << i)) << (2 * i + 1))
+			| ((z & ((uint64_t)1 << i)) << (2 * i + 2));
+
+	return res;
+}
+
+static inline int
+sort_by_z_curve(const struct moving_particle *p0,
+	const struct moving_particle *p1)
+{
+	const unsigned x0 = (unsigned)p0->part.pos.x;
+	const unsigned y0 = (unsigned)p0->part.pos.y;
+	const unsigned x1 = (unsigned)p1->part.pos.x;
+	const unsigned y1 = (unsigned)p1->part.pos.y;
+
+	return (morton_number(x0, y0, 0) < morton_number(x1, y1, 0)) ? -1 : 1;
+}
+
+static struct vec2
+gforce(const struct particle *p0, const struct particle *p1)
+{
+	static const float G		= 6.6726e-11;
+	static const float min_dist = 4.0;
+
+	if (vec2_eql(&p0->pos, &p1->pos))
+		return zero_vec;
+
+	float dist = vec2_dist(&p0->pos, &p1->pos);
+	if (dist < min_dist)
+		dist = min_dist;
+
+	const float rp3 = dist * dist * dist;
+	const float gm	= G * p0->mass * p1->mass;
+
+	struct vec2 result = p1->pos;
+	vec2_subassign(&result, &p0->pos);
+	vec2_mulassign(&result, gm / rp3);
+
+	return result;
 }

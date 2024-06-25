@@ -43,19 +43,15 @@ static struct threads {
 	struct thread_state states[];
 } *tls = NULL;
 
-// Returns a random float between 0.0 and 1.0.
-static inline float
-randomf(void)
-{
-	return (float)random() / (float)RAND_MAX;
-}
-
 static int init_barrier();
 static struct threads *init_tls(void);
 static struct moving_particle *init_particles(void);
+static void *thread_main(void *args);
 static int thread_init(unsigned id);
 static int thread_step(struct thread_state *state, unsigned step);
-static void *thread_main(void *args);
+
+static void sync_tree_particles(const struct particle_slice *slice,
+	struct moving_particle tree_particles[]);
 
 int
 main(int argc, char *argv[argc])
@@ -118,6 +114,27 @@ kill:
 	return res;
 }
 
+int
+arena_init(struct arena *arena, size_t size)
+{
+	arena->memory = mmap(NULL, size, PROT_READ | PROT_WRITE,
+		MAP_PRIVATE | MAP_ANON, -1, 0);
+	if (unlikely(arena->memory == MAP_FAILED))
+		return -1;
+
+	arena->curr = arena->memory;
+	arena->end	= (void *)((uintptr_t)arena->memory + size);
+
+	return 0;
+}
+
+void
+arena_deinit(struct arena *arena)
+{
+	const size_t size = (uintptr_t)arena->end - (uintptr_t)arena->curr;
+	munmap(arena->memory, size);
+}
+
 static int
 init_barrier(void)
 {
@@ -130,6 +147,39 @@ init_barrier(void)
 		return res;
 
 	return 0;
+}
+
+static struct threads *
+init_tls(void)
+{
+	struct threads *tls = malloc(sizeof(struct threads)
+		+ (sizeof(struct thread_state) * options.threads));
+	if (unlikely(tls = NULL))
+		return NULL;
+
+	tls->len = options.threads;
+
+	return tls;
+}
+
+static struct moving_particle *
+init_particles(void)
+{
+	if (options.seed != 0)
+		srandom(options.seed);
+
+	struct moving_particle *particles
+		= malloc(sizeof(struct moving_particle) * options.particles);
+	if (particles == NULL)
+		return NULL;
+
+	const float r = options.radius;
+	const float d = 2 * r;
+
+	for (size_t p = 0; p < options.particles; p++)
+		moving_particle_randomize(&particles[p], r, d);
+
+	return particles;
 }
 
 static void *
@@ -145,6 +195,39 @@ thread_main(void *args)
 			return NULL; // TODO: more meaningful value
 
 	return NULL;
+}
+
+static int
+thread_init(unsigned id)
+{
+	static const size_t arena_size = (size_t)1 << 20;
+
+	struct thread_state *state = &tls->states[id];
+	int res;
+
+	state->id = id;
+	if ((res = arena_init(&state->arena, arena_size)))
+		return res;
+	if ((state->tree = particle_tree_init()) == NULL)
+		return -1;
+
+	size_t len		   = options.particles / options.threads;
+	const size_t rem   = options.particles % options.threads;
+	const size_t start = (size_t)id * len;
+	if (id == options.threads - 1)
+		len += rem;
+
+	struct moving_particle *tree_particles
+		= particle_tree_particles(state->tree);
+	state->slice = (struct particle_slice) {
+		.offset = start,
+		.len	= len,
+		.from	= &tree_particles[start],
+	};
+
+	sync_tree_particles(NULL, particle_tree_particles(state->tree));
+
+	return 0;
 }
 
 static int
@@ -165,7 +248,27 @@ thread_step(struct thread_state *state, unsigned step)
 	state->radius = radius;
 
 	pthread_barrier_wait(&barrier);
-	particle_tree_sync(state->tree, &state->slice, particles);
+	sync_tree_particles(&state->slice, particle_tree_particles(state->tree));
 
 	return 0;
+}
+
+static void
+sync_tree_particles(const struct particle_slice *slice,
+	struct moving_particle tree_particles[])
+{
+	if (slice == NULL) {
+		memcpy(tree_particles, particles,
+			sizeof(struct moving_particle) * options.particles);
+		return;
+	}
+
+	// Copy everything before the slice over into the local particle slice.
+	memcpy(&tree_particles[0], &particles[0],
+		sizeof(struct moving_particle) * slice->offset);
+	// Copy everything after the slice over into the local particle slice.
+	const size_t after = slice->offset + slice->len;
+	const size_t len   = options.particles - after;
+	memcpy(&tree_particles[after], &particles[after],
+		sizeof(struct moving_particle) * len);
 }

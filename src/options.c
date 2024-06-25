@@ -4,7 +4,7 @@
 
 #include <getopt.h>
 
-const struct options options = {
+struct options options = {
 	.steps	   = 0,
 	.particles = 0,
 	.max_mass  = 0.0,
@@ -19,6 +19,7 @@ static void print_usage(const char *exe);
 int
 options_parse(int argc, char *argv[argc])
 {
+	print_usage(argv[0]);
 	return -1;
 }
 
@@ -44,5 +45,6 @@ print_usage(const char *exe)
 #ifdef DISPLAY
 		"-d [DIM], --dimension=[DIM]\n"
 #endif // DISPLAY
-		"--theta\n");
+		"--theta\n",
+		exe);
 }

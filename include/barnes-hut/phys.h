@@ -8,11 +8,6 @@ struct vec2 {
 	float x, y;
 };
 
-// The zero (origin) vector.
-extern const struct vec2 zvec;
-// The unit vector.
-extern const struct vec2 uvec;
-
 // A point-mass particle.
 struct particle {
 	struct vec2 pos;
@@ -24,6 +19,8 @@ struct moving_particle {
 	struct particle part;
 	struct vec2 vel;
 };
+
+void moving_particle_randomize(struct moving_particle *part, float r, float d);
 
 // A consecutive view into the global array of particles.
 struct particle_slice {
@@ -63,9 +60,6 @@ int particle_tree_build(struct particle_tree *tree, float radius,
 float particle_tree_simulate(struct particle_tree *tree,
 	const struct particle_slice *slice);
 
-// Synchronizes the tree's local array of particles with the global one,
-// excluding every particle contained by the given slice.
-void particle_tree_sync(struct particle_tree *tree,
-	const struct particle_slice *slice, struct moving_particle particles[]);
+struct moving_particle *particle_tree_particles(struct particle_tree *tree);
 
 #endif // BARNES_HUT_PHYS_H
