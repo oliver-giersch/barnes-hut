@@ -155,13 +155,15 @@ thread_step(struct thread_state *state, unsigned step)
 	pthread_barrier_wait(&barrier);
 	if (options.optimize && step % 10 == 0)
 		particle_tree_sort(state->tree);
-	const float radius = state->radius;
+	float radius = state->radius;
 	if ((res = particle_tree_build(state->tree, radius, &state->arena)))
 		return res;
 
-	particle_tree_simulate(state->tree, &state->slice);
+	radius = particle_tree_simulate(state->tree, &state->slice);
 	memcpy(&particles[state->slice.offset], state->slice.from,
 		sizeof(struct moving_particle) * state->slice.len);
+	state->radius = radius;
+
 	pthread_barrier_wait(&barrier);
 	particle_tree_sync(state->tree, &state->slice, particles);
 
