@@ -1,5 +1,7 @@
 // Required for `pthread_barrier`.
+#ifdef linux
 #define _XOPEN_SOURCE 700
+#endif // linux
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -43,11 +45,12 @@ static struct threads {
 	struct thread_state states[];
 } *tls = NULL;
 
-static int init_barrier();
+static int init_barrier(void);
 static struct threads *init_tls(void);
 static struct moving_particle *init_particles(void);
 static void *thread_main(void *args);
 static int thread_init(unsigned id);
+static void thread_deinit(unsigned id);
 static int thread_step(struct thread_state *state, unsigned step);
 static void sync_tree_particles(struct moving_particle tree_particles[],
 	const struct particle_slice *slice);

@@ -2,7 +2,7 @@ EXE     := barnes-hut
 CC      := /usr/bin/cc
 CFLAGS  := --std=c11 -Werror -Wall -Wpedantic -MMD
 LD      := /usr/bin/cc
-LDFLAGS := -Wl,-lm
+LDFLAGS :=
 
 # safer alternative: -O3 -fno-math-errno -fno-trapping-math
 COPTFLAGS := -O3 --fast-math
@@ -27,10 +27,10 @@ endif
 all: $(EXE)
 
 $(EXE): $(OBJ) Makefile
-	$(LD) $(LDFLAGS) $(OBJ) -o $@
+	$(LD) $(LDFLAGS) $(LIB) $(OBJ) -o $@
 
 $(OBJ): %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@ $(INC) $(LIB)
+	$(CC) $(CFLAGS) -c $< -o $@ $(INC)
 
 -include $(DEP)
 

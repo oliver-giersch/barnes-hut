@@ -114,8 +114,9 @@ particle_tree_init(void)
 void
 particle_tree_sort(struct particle_tree *tree)
 {
+	typedef int (*cmp_fn)(const void *, const void *);
 	qsort(tree->particles, tree->num_particles, sizeof(struct moving_particle),
-		(__compar_fn_t)&sort_by_z_curve);
+		(cmp_fn)&sort_by_z_curve);
 }
 
 int
