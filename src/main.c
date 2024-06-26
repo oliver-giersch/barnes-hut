@@ -4,6 +4,7 @@
 #endif // __linux
 
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include <sys/mman.h>
@@ -55,6 +56,10 @@ static void thread_deinit(unsigned id);
 static int thread_step(struct thread_state *state, unsigned step);
 static void sync_tree_particles(struct moving_particle tree_particles[],
 	const struct particle_slice *slice);
+
+static const size_t kib = (size_t)1 << 10;
+static const size_t mib = kib << 10;
+static const size_t gib = mib << 10;
 
 int
 main(int argc, char *argv[argc])
@@ -147,7 +152,8 @@ void
 arena_deinit(struct arena *arena)
 {
 	const size_t size = (uintptr_t)arena->end - (uintptr_t)arena->curr;
-	munmap(arena->memory, size);
+	if (munmap(arena->memory, size))
+		fprintf(stderr, "Failed to unmap arena: %s\n", strerror(errno));
 }
 
 static int
@@ -198,14 +204,16 @@ init_particles(void)
 static void *
 thread_main(void *args)
 {
+	int res;
+
 	const unsigned id = (unsigned)((uintptr_t)args);
-	if (thread_init(id))
-		return NULL; // TODO: more meaningful value
+	if ((res = thread_init(id)))
+		return (void *)((uintptr_t)res);
 
 	struct thread_state *state = &tls->states[id];
 	for (unsigned step = 0; options.steps == 0 || step < options.steps; step++)
-		if (thread_step(state, step))
-			return NULL; // TODO: more meaningful value
+		if ((res = thread_step(state, step)))
+			return (void *)((uintptr_t)res);
 
 	return NULL;
 }
@@ -213,7 +221,7 @@ thread_main(void *args)
 static int
 thread_init(unsigned id)
 {
-	static const size_t arena_size = (size_t)1 << 20;
+	static const size_t arena_size = 4 * gib;
 
 	struct thread_state *state = &tls->states[id];
 	int res;
@@ -257,7 +265,7 @@ thread_step(struct thread_state *state, unsigned step)
 	int res;
 
 	pthread_barrier_wait(&barrier);
-	// TODO: check global error flag?
+	// TODO: check global error flag? return EINTR?
 	if (options.optimize && step % 10 == 0)
 		particle_tree_sort(state->tree);
 	float radius = state->radius;
