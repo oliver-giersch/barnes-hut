@@ -37,6 +37,10 @@ struct thread_state {
 	float radius;
 } aligned(64);
 
+#include <stdatomic.h>
+
+// The global thread error flag.
+static atomic_int thread_errno = 0;
 // The global thread synchronization barrier.
 static pthread_barrier_t barrier;
 // The globally shared and synchronized region of all simulated particles.
@@ -60,6 +64,12 @@ static void sync_tree_particles(struct moving_particle tree_particles[],
 static const size_t kib = (size_t)1 << 10;
 static const size_t mib = kib << 10;
 static const size_t gib = mib << 10;
+
+static inline bool
+step_continue(unsigned step)
+{
+	return options.steps == 0 || step < options.steps;
+}
 
 int
 main(int argc, char *argv[argc])
@@ -91,17 +101,18 @@ main(int argc, char *argv[argc])
 		pthread_attr_destroy(&attr);
 
 		if (res)
-			goto kill;
+			goto exit;
 	}
 
-	if ((res = thread_init(0)))
-		goto kill;
+	if ((res = thread_init(0))) {
+		atomic_store_explicit(&thread_errno, res, memory_order_release);
+		goto exit;
+	}
 
 	struct thread_state *state = &tls->states[0];
-	for (unsigned step = 0; options.steps == 0 || step < options.steps;
-		 step++) {
+	for (unsigned step = 0; step_continue(step); step++) {
 		if ((res = thread_step(state, step)))
-			goto kill;
+			goto exit;
 
 		// Recalculate the radius for the next iteration step.
 		//
@@ -118,20 +129,23 @@ main(int argc, char *argv[argc])
 			tls->states[t].radius = max_radius;
 	}
 
-	return 0;
-kill:
-	// TODO: after joining: foreach thread_deinit()
-	// global error flag MUST be set!
+exit:
 	for (unsigned i = 0; i < t; i++) {
 		void *thread_res;
 		pthread_join(threads[i], &thread_res);
+
+		int tres = (int)((uintptr_t)thread_res);
+		if (res > 0)
+			fprintf(stderr, "Error in joined thread %d: %s\n", i,
+				strerror(res));
 		thread_deinit(i);
 	}
 
 	free(threads);
 	free(tls);
 	free(particles);
-	return res;
+
+	return (res > 0) ? res : 0;
 }
 
 int
@@ -207,11 +221,13 @@ thread_main(void *args)
 	int res;
 
 	const unsigned id = (unsigned)((uintptr_t)args);
-	if ((res = thread_init(id)))
+	if ((res = thread_init(id))) {
+		atomic_store_explicit(&thread_errno, res, memory_order_release);
 		return (void *)((uintptr_t)res);
+	}
 
 	struct thread_state *state = &tls->states[id];
-	for (unsigned step = 0; options.steps == 0 || step < options.steps; step++)
+	for (unsigned step = 0; step_continue(step); step++)
 		if ((res = thread_step(state, step)))
 			return (void *)((uintptr_t)res);
 
@@ -265,19 +281,23 @@ thread_step(struct thread_state *state, unsigned step)
 	int res;
 
 	pthread_barrier_wait(&barrier);
-	// TODO: check global error flag? return EINTR?
 	if (options.optimize && step % 10 == 0)
 		particle_tree_sort(state->tree);
 	float radius = state->radius;
 
 	res = particle_tree_build(state->tree, radius, &state->arena);
-	if (unlikely(res))
+	if (unlikely(res)) {
+		atomic_store_explicit(&thread_errno, res, memory_order_release);
 		return res;
+	}
 
 	radius = particle_tree_simulate(state->tree, &state->slice);
 	memcpy(&particles[state->slice.offset], state->slice.from,
 		sizeof(struct moving_particle) * state->slice.len);
 	state->radius = radius;
+
+	if (atomic_load_explicit(&thread_errno, memory_order_acquire))
+		return BHE_EARLY_EXIT;
 
 	// wait for all threads to complete the current simulation step and
 	// propagate their results, before synchronizing the global particle slice
