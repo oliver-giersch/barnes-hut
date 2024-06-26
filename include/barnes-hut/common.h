@@ -6,7 +6,7 @@
 #define aligned(align) __attribute__((aligned((align))))
 
 enum error {
-	ENOMEM = -1,
+	BHE_EARLY_EXIT = -1,
 };
 
 #endif // BARNES_HUT_COMMON_H

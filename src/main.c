@@ -60,7 +60,7 @@ main(int argc, char *argv[argc])
 {
 	int res;
 	if ((res = options_parse(argc, argv)))
-		return res;
+		return (res == BHE_EARLY_EXIT) ? 0 : res;
 
 	// initialize global state.
 	if ((res = init_barrier()))
@@ -165,14 +165,14 @@ init_barrier(void)
 static struct threads *
 init_tls(void)
 {
-	struct threads *tls = malloc(sizeof(struct threads)
+	struct threads *mem = malloc(sizeof(struct threads)
 		+ (sizeof(struct thread_state) * options.threads));
-	if (unlikely(tls = NULL))
+	if (unlikely(mem = NULL))
 		return NULL;
 
-	tls->len = options.threads;
+	mem->len = options.threads;
 
-	return tls;
+	return mem;
 }
 
 static struct moving_particle *
