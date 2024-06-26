@@ -2,7 +2,7 @@
 
 #include "barnes-hut/phys.h"
 
-#include <complex.h>
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -18,7 +18,7 @@
 // The zero/origin vector.
 static const struct vec2 zero_vec = { 0.0, 0.0 };
 
-// Returns x^2.
+// Returns `x * x`.
 static inline float
 sq(float x)
 {
@@ -190,6 +190,7 @@ particle_tree_particles(struct particle_tree *tree)
 static inline bool
 quadrant_is_leaf(const struct quadrant *quad)
 {
+	assert(quad->bodies != 0);
 	return quad->bodies == 1;
 }
 
@@ -206,6 +207,7 @@ quadrant_malloc(struct arena *arena, struct particle center, float x, float y,
 		.x		  = x,
 		.y		  = y,
 		.len	  = len,
+		.bodies	  = 1,
 		.children = { NULL, NULL, NULL, NULL },
 	};
 
@@ -221,7 +223,7 @@ quadrant_insert(struct quadrant *quad, const struct particle *part,
 	if (quadrant_is_leaf(quad)) {
 		if (vec2_eql(&quad->center.pos, &part->pos)
 			|| feql(quad->len / 2, 0.0)) {
-			quad->center.mass *= part->mass;
+			quad->center.mass += part->mass;
 			return 0;
 		}
 
@@ -254,7 +256,7 @@ quadrant_insert_child(struct quadrant *quad, const struct particle *part,
 	if (part->pos.y > y + len)
 		c += 2, y += len;
 
-	if (likely(quad->children[c] != NULL))
+	if (quad->children[c] != NULL)
 		return quadrant_insert(quad->children[c], part, arena);
 
 	quad->children[c] = quadrant_malloc(arena, *part, x, y, len);
@@ -267,7 +269,7 @@ static struct vec2
 quadrant_update_center(struct quadrant *quad)
 {
 	struct vec2 new_center;
-	if (quad->bodies <= 1) {
+	if (quadrant_is_leaf(quad)) {
 		new_center = quad->center.pos;
 		vec2_mulassign(&new_center, quad->center.mass);
 		return new_center;
@@ -291,7 +293,7 @@ static void
 quadrant_update_force(struct quadrant *quad, const struct particle *part,
 	struct vec2 *force)
 {
-	if (unlikely(quadrant_is_leaf(quad))) {
+	if (quadrant_is_leaf(quad)) {
 		if (!vec2_eql(&quad->center.pos, &part->pos)) {
 			const struct vec2 gf = gforce(part, &quad->center);
 			vec2_addassign(force, &gf);
