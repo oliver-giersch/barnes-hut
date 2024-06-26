@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <errno.h>
 #include <math.h>
 #include <string.h>
 
@@ -14,6 +15,7 @@
 #include "barnes-hut/common.h"
 #include "barnes-hut/options.h"
 
+// The zero/origin vector.
 static const struct vec2 zero_vec = { 0.0, 0.0 };
 
 // Returns x^2.
@@ -45,13 +47,11 @@ static inline void vec2_divassign(struct vec2 *v, float t);
 static inline bool vec2_eql(const struct vec2 *v, const struct vec2 *u);
 static inline float vec2_dist_sq(const struct vec2 *v, const struct vec2 *u);
 static inline float vec2_dist(const struct vec2 *v, const struct vec2 *u);
-static inline bool vec2_is_contained(const struct vec2 *v, float x, float y,
-	float len);
 
 void
-moving_particle_randomize(struct moving_particle *part, float r, float d)
+moving_particle_randomize(struct moving_particle *part, float r)
 {
-	const float x	 = randomf() * d - r;
+	const float x	 = randomf() * 2 * r - r;
 	const float ymax = sqrtf(sq(r) - sq(x));
 	const float y	 = randomf() * 2 * ymax - ymax;
 
@@ -66,9 +66,17 @@ moving_particle_randomize(struct moving_particle *part, float r, float d)
 
 #define QTREE_CHILDREN 4
 struct quadrant {
+	// The quadrant's center point mass (cumulative over all contained bodies).
 	struct particle center;
+	// The quadrant's dimensions (lower-left corner and width).
 	float x, y, len;
+	// The number of all bodies contained within the quadrant.
 	unsigned bodies;
+	// The quadrant's sub-quadrants
+	//   0: lower-left
+	//   1: lower-right
+	//   2: upper-left
+	//   3: upper-right
 	struct quadrant *children[QTREE_CHILDREN];
 };
 
@@ -89,6 +97,7 @@ static inline int sort_by_z_curve(const struct moving_particle *p0,
 static struct vec2 gforce(const struct particle *p0, const struct particle *p1);
 
 struct particle_tree {
+	// The particle tree's root quadrant.
 	struct quadrant *root;
 	size_t num_particles;
 	struct moving_particle particles[];
@@ -123,20 +132,23 @@ int
 particle_tree_build(struct particle_tree *tree, float radius,
 	struct arena *arena)
 {
+	int res;
+
 	if (likely(tree->root != NULL))
 		arena_reset(arena);
 
 	tree->root = quadrant_malloc(arena, tree->particles[0].part, -1 * radius,
 		-1 * radius, 2 * radius);
 	if (unlikely(tree->root == NULL))
-		return -1;
+		return ENOMEM;
 
 	for (size_t i = 1; i < tree->num_particles; i++) {
 		const struct particle *part = &tree->particles[i].part;
-		if (quadrant_insert(tree->root, part, arena))
-			return -1;
+		if ((res = unlikely(quadrant_insert(tree->root, part, arena))))
+			return res;
 	}
 
+	// FIXME: SIGSEGV because tree->root has become invalid?
 	quadrant_update_center(tree->root);
 	return 0;
 }
@@ -204,13 +216,13 @@ static int
 quadrant_insert(struct quadrant *quad, const struct particle *part,
 	struct arena *arena)
 {
-	int res = 0;
+	int res;
 
 	if (quadrant_is_leaf(quad)) {
 		if (vec2_eql(&quad->center.pos, &part->pos)
 			|| feql(quad->len / 2, 0.0)) {
 			quad->center.mass *= part->mass;
-			return res;
+			return 0;
 		}
 
 		if ((res = quadrant_insert_child(quad, &quad->center, arena)))
@@ -233,21 +245,21 @@ quadrant_insert_child(struct quadrant *quad, const struct particle *part,
 	float y			= quad->y;
 	unsigned c;
 
-	if (vec2_is_contained(&part->pos, x, y, len))
+	// Determine, if pos lies in left (0/2) or right (1/3) quadrant.
+	if (part->pos.x <= x + len)
 		c = 0;
-	else if (vec2_is_contained(&part->pos, x + len, y, len))
-		c = 1, x = x + len;
-	else if (vec2_is_contained(&part->pos, x, y + len, len))
-		c = 2, y = y + len;
 	else
-		c = 3, x = x + len, y = y + len;
+		c = 1, x += len;
+	// Determine, if pos lies in bottom (0/1) or top (2/3) quadrant.
+	if (part->pos.y > y + len)
+		c += 2, y += len;
 
 	if (likely(quad->children[c] != NULL))
 		return quadrant_insert(quad->children[c], part, arena);
 
 	quad->children[c] = quadrant_malloc(arena, *part, x, y, len);
 	if (unlikely(quad->children[c] == NULL))
-		return -1;
+		return ENOMEM;
 	return 0;
 }
 
@@ -262,7 +274,7 @@ quadrant_update_center(struct quadrant *quad)
 	}
 
 	new_center = zero_vec;
-	for (unsigned c = 0; c < 4; c++) {
+	for (unsigned c = 0; c < QTREE_CHILDREN; c++) {
 		if (quad->children[c] != NULL) {
 			const struct vec2 child_center
 				= quadrant_update_center(quad->children[c]);
@@ -345,13 +357,6 @@ vec2_dist(const struct vec2 *v, const struct vec2 *u)
 	return sqrtf(vec2_dist_sq(v, u));
 }
 
-static inline bool
-vec2_is_contained(const struct vec2 *v, float x, float y, float len)
-{
-	return (v->x >= x && v->x <= x + len) //  x
-		&& (v->y >= y && v->y <= y + len); // y
-}
-
 static inline uint64_t
 morton_number(unsigned x, unsigned y, unsigned z)
 {
@@ -383,7 +388,7 @@ gforce(const struct particle *p0, const struct particle *p1)
 	static const float G		= 6.6726e-11;
 	static const float min_dist = 4.0;
 
-	if (vec2_eql(&p0->pos, &p1->pos))
+	if (unlikely(vec2_eql(&p0->pos, &p1->pos)))
 		return zero_vec;
 
 	float dist = vec2_dist(&p0->pos, &p1->pos);

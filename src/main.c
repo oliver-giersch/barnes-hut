@@ -8,6 +8,7 @@
 
 #include <sys/mman.h>
 
+#include <errno.h>
 #include <pthread.h>
 #include <string.h>
 
@@ -63,18 +64,18 @@ main(int argc, char *argv[argc])
 		return (res == BHE_EARLY_EXIT) ? 0 : res;
 
 	// initialize global state.
-	if ((res = init_barrier()))
-		return -1;
-	if ((particles = init_particles()) == NULL)
-		return -1;
-	if ((tls = init_tls()) == NULL)
-		return -1;
+	if (unlikely((res = init_barrier())))
+		return ENOMEM;
+	if (unlikely((particles = init_particles()) == NULL))
+		return ENOMEM;
+	if (unlikely((tls = init_tls()) == NULL))
+		return ENOMEM;
 
 	// spawn p - 1 additional worker threads
 	const unsigned pthreads = options.threads - 1;
 	pthread_t *threads		= malloc(sizeof(pthread_t) * pthreads);
-	if (threads == NULL)
-		return -1;
+	if (unlikely(threads == NULL))
+		return ENOMEM;
 
 	unsigned t;
 	for (t = 0; t < pthreads; t++) {
@@ -92,7 +93,8 @@ main(int argc, char *argv[argc])
 		goto kill;
 
 	struct thread_state *state = &tls->states[0];
-	for (unsigned step = 0; step < options.steps; step++) {
+	for (unsigned step = 0; options.steps == 0 || step < options.steps;
+		 step++) {
 		if ((res = thread_step(state, step)))
 			goto kill;
 
@@ -133,7 +135,7 @@ arena_init(struct arena *arena, size_t size)
 	arena->memory = mmap(NULL, size, PROT_READ | PROT_WRITE,
 		MAP_PRIVATE | MAP_ANON, -1, 0);
 	if (unlikely(arena->memory == MAP_FAILED))
-		return -1;
+		return errno;
 
 	arena->curr = arena->memory;
 	arena->end	= (void *)((uintptr_t)arena->memory + size);
@@ -165,14 +167,14 @@ init_barrier(void)
 static struct threads *
 init_tls(void)
 {
-	struct threads *mem = malloc(sizeof(struct threads)
+	struct threads *tls = malloc(sizeof(struct threads)
 		+ (sizeof(struct thread_state) * options.threads));
-	if (unlikely(mem = NULL))
+	if (unlikely(tls == NULL))
 		return NULL;
 
-	mem->len = options.threads;
+	tls->len = options.threads;
 
-	return mem;
+	return tls;
 }
 
 static struct moving_particle *
@@ -183,14 +185,12 @@ init_particles(void)
 
 	struct moving_particle *particles
 		= malloc(sizeof(struct moving_particle) * options.particles);
-	if (particles == NULL)
+	if (unlikely(particles == NULL))
 		return NULL;
 
 	const float r = options.radius;
-	const float d = 2 * r;
-
 	for (size_t p = 0; p < options.particles; p++)
-		moving_particle_randomize(&particles[p], r, d);
+		moving_particle_randomize(&particles[p], r);
 
 	return particles;
 }
@@ -203,7 +203,7 @@ thread_main(void *args)
 		return NULL; // TODO: more meaningful value
 
 	struct thread_state *state = &tls->states[id];
-	for (unsigned step = 0; step < options.steps; step++)
+	for (unsigned step = 0; options.steps == 0 || step < options.steps; step++)
 		if (thread_step(state, step))
 			return NULL; // TODO: more meaningful value
 
@@ -218,9 +218,9 @@ thread_init(unsigned id)
 	struct thread_state *state = &tls->states[id];
 	int res;
 
-	if ((state->tree = particle_tree_init()) == NULL)
-		return -1;
-	if ((res = arena_init(&state->arena, arena_size)))
+	if (unlikely((state->tree = particle_tree_init()) == NULL))
+		return ENOMEM;
+	if (unlikely((res = arena_init(&state->arena, arena_size))))
 		return res;
 
 	struct moving_particle *tree_particles
@@ -261,7 +261,9 @@ thread_step(struct thread_state *state, unsigned step)
 	if (options.optimize && step % 10 == 0)
 		particle_tree_sort(state->tree);
 	float radius = state->radius;
-	if ((res = particle_tree_build(state->tree, radius, &state->arena)))
+
+	res = particle_tree_build(state->tree, radius, &state->arena);
+	if (unlikely(res))
 		return res;
 
 	radius = particle_tree_simulate(state->tree, &state->slice);

@@ -14,8 +14,9 @@
 
 struct options options = {
 	.steps	   = 0,
-	.particles = 0,
+	.particles = 100000,
 	.max_mass  = 1e12,
+	.radius	   = 250.0,
 	.theta	   = 0.3,
 	.threads   = 1,
 	.seed	   = 0,
@@ -26,18 +27,18 @@ static inline int parse_arg_ull(const char *name, const char *optarg,
 	unsigned long long *res);
 static inline int parse_arg_float(const char *name, const char *optarg,
 	float *res);
-static inline bool is_valid_optarg(const char *optarg);
-
 static int print_usage(const char *exe);
 
-// ./barnes $2 $3 256 1e12 0.3 0.01 50 $4 1 1
-//         dim,num,r,    m, th, dt, steps,d,o
+#define THETA 1000
 
 static const char *argsstrs[] = {
-	['t'] = "steps",
-	['n'] = "num",
-	['m'] = "mass",
-	['r'] = "radius",
+	['t']	= "steps",
+	['n']	= "num",
+	['m']	= "mass",
+	['r']	= "radius",
+	['p']	= "threads",
+	['s']	= "seeds",
+	[THETA] = "theta",
 };
 
 int
@@ -48,6 +49,8 @@ options_parse(int argc, char *argv[argc])
 		{ "num", required_argument, NULL, 'n' },
 		{ "mass", required_argument, NULL, 'm' },
 		{ "radius", required_argument, NULL, 'r' },
+		{ "seed", required_argument, NULL, 's' },
+		{ "theta", required_argument, NULL, THETA },
 		{ "optimize", no_argument, NULL, 'o' },
 		{ 0, 0, 0, 0 },
 	};
@@ -58,7 +61,6 @@ options_parse(int argc, char *argv[argc])
 			= getopt_long(argc, argv, "t:n:m:r:p:s:ho", long_opts, NULL);
 
 		unsigned long long ull;
-		// unsigned u;
 		float f;
 
 		if (opt == -1)
@@ -78,8 +80,6 @@ options_parse(int argc, char *argv[argc])
 		case 'm':
 			if ((res = parse_arg_float(argsstrs[opt], optarg, &f)))
 				goto out;
-			if (f < 0.0)
-				return -1;
 			options.max_mass = f;
 			break;
 		case 'r':
@@ -88,10 +88,19 @@ options_parse(int argc, char *argv[argc])
 			options.radius = f;
 			break;
 		case 'p':
-			ull = strtoull(optarg, NULL, 10);
+			if ((res = parse_arg_ull(argsstrs[opt], optarg, &ull)))
+				goto out;
+			options.threads = (unsigned)ull;
 			break;
 		case 's':
-			ull = strtoull(optarg, NULL, 10);
+			if ((res = parse_arg_ull(argsstrs[opt], optarg, &ull)))
+				goto out;
+			options.seed = (unsigned)ull;
+			break;
+		case THETA:
+			if ((res = parse_arg_float(argsstrs[opt], optarg, &f)))
+				goto out;
+			options.theta = f;
 			break;
 		case 'o':
 			options.optimize = true;
@@ -142,18 +151,12 @@ parse_arg_float(const char *name, const char *optarg, float *res)
 	}
 
 	if (*res < 0.0) {
-		fprintf(stderr, "%s: invalid %s args: Negative valute not permitted\n",
+		fprintf(stderr, "%s: Invalid %s args: Negative valute not permitted\n",
 			__func__, name);
 		return EINVAL;
 	}
 
 	return 0;
-}
-
-static inline bool
-is_valid_optarg(const char *optarg)
-{
-	return optarg != NULL && *optarg != '\0';
 }
 
 static int

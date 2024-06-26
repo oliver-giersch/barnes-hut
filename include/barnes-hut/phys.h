@@ -20,7 +20,8 @@ struct moving_particle {
 	struct vec2 vel;
 };
 
-void moving_particle_randomize(struct moving_particle *part, float r, float d);
+// Randomizes the coordinates of the given particle within a cirle or radius r
+void moving_particle_randomize(struct moving_particle *part, float r);
 
 // A consecutive view into the global array of particles.
 struct particle_slice {
@@ -60,6 +61,7 @@ int particle_tree_build(struct particle_tree *tree, float radius,
 float particle_tree_simulate(struct particle_tree *tree,
 	const struct particle_slice *slice);
 
+// Returns the particle tree's local copy of the global particle array.
 struct moving_particle *particle_tree_particles(struct particle_tree *tree);
 
 #endif // BARNES_HUT_PHYS_H
