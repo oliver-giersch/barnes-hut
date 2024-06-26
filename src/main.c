@@ -1,7 +1,7 @@
 // Required for `pthread_barrier`.
-#ifdef linux
+#ifdef __linux
 #define _XOPEN_SOURCE 700
-#endif // linux
+#endif // __linux
 
 #include <stddef.h>
 #include <stdlib.h>
