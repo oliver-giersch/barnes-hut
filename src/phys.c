@@ -99,7 +99,6 @@ static struct vec2 gforce(const struct particle *p0, const struct particle *p1);
 struct particle_tree {
 	// The particle tree's root quadrant.
 	struct quadrant *root;
-	size_t num_particles;
 	struct moving_particle particles[];
 };
 
@@ -112,10 +111,7 @@ particle_tree_init(void)
 	if (unlikely(tree == NULL))
 		return NULL;
 
-	*tree = (struct particle_tree) {
-		.root		   = NULL,
-		.num_particles = options.particles,
-	};
+	*tree = (struct particle_tree) { .root = NULL };
 
 	return tree;
 }
@@ -124,7 +120,7 @@ void
 particle_tree_sort(struct particle_tree *tree)
 {
 	typedef int (*cmp_fn)(const void *, const void *);
-	qsort(tree->particles, tree->num_particles, sizeof(struct moving_particle),
+	qsort(tree->particles, options.particles, sizeof(struct moving_particle),
 		(cmp_fn)&sort_by_z_curve);
 }
 
@@ -142,13 +138,12 @@ particle_tree_build(struct particle_tree *tree, float radius,
 	if (unlikely(tree->root == NULL))
 		return ENOMEM;
 
-	for (size_t i = 1; i < tree->num_particles; i++) {
+	for (size_t i = 1; i < options.particles; i++) {
 		const struct particle *part = &tree->particles[i].part;
 		if ((res = unlikely(quadrant_insert(tree->root, part, arena))))
 			return res;
 	}
 
-	// FIXME: SIGSEGV because tree->root has become invalid?
 	quadrant_update_center(tree->root);
 	return 0;
 }
@@ -190,7 +185,6 @@ particle_tree_particles(struct particle_tree *tree)
 static inline bool
 quadrant_is_leaf(const struct quadrant *quad)
 {
-	assert(quad->bodies != 0);
 	return quad->bodies == 1;
 }
 
@@ -262,6 +256,7 @@ quadrant_insert_child(struct quadrant *quad, const struct particle *part,
 	quad->children[c] = quadrant_malloc(arena, *part, x, y, len);
 	if (unlikely(quad->children[c] == NULL))
 		return ENOMEM;
+
 	return 0;
 }
 
@@ -307,10 +302,9 @@ quadrant_update_force(struct quadrant *quad, const struct particle *part,
 		const struct vec2 gf = gforce(part, &quad->center);
 		vec2_addassign(force, &gf);
 	} else {
-		for (unsigned c = 0; c < QTREE_CHILDREN; c++) {
+		for (unsigned c = 0; c < QTREE_CHILDREN; c++)
 			if (quad->children[c] != NULL)
 				quadrant_update_force(quad->children[c], part, force);
-		}
 	}
 }
 

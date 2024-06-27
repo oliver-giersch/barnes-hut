@@ -112,8 +112,7 @@ main(int argc, char *argv[argc])
 		goto exit;
 	}
 
-	if (options.verbose)
-		fprintf(stderr, "begin simulation ...\n");
+	verbose_printf("begin simulation ...\n");
 
 	struct thread_state *state = &tls->states[0];
 	for (unsigned step = 0; step_continue(step); step++) {
@@ -221,15 +220,13 @@ init_particles(void)
 	if (unlikely(particles == NULL))
 		return NULL;
 
-	if (options.verbose)
-		fprintf(stderr, "randomizing %zu particles within radius %.3f.\n",
-			options.particles, options.radius);
+	verbose_printf("randomizing %zu particles within radius %.3f.\n",
+		options.particles, options.radius);
 
 	for (size_t p = 0; p < options.particles; p++)
 		moving_particle_randomize(&particles[p], options.radius);
 
-	if (options.verbose)
-		fprintf(stderr, "particle randomization complete.\n");
+	verbose_printf("particle randomization complete.\n");
 
 	return particles;
 }
@@ -301,12 +298,12 @@ thread_step(struct thread_state *state, unsigned step)
 	struct timespec start, stop;
 
 	pthread_barrier_wait(&barrier);
-	if (options.optimize && step % 10 == 0)
-		particle_tree_sort(state->tree);
-	float radius = state->radius;
 
 	if (state->id == 0)
 		clock_gettime(CLOCK_MONOTONIC, &start);
+	if (options.optimize && step % 10 == 0)
+		particle_tree_sort(state->tree);
+	float radius = state->radius;
 
 	res = particle_tree_build(state->tree, radius, &state->arena);
 	if (unlikely(res)) {
