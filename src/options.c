@@ -1,5 +1,6 @@
 #include "barnes-hut/options.h"
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -123,6 +124,18 @@ out:
 	if (res)
 		print_usage(argv[0]);
 	return res;
+}
+
+printf_like void
+verbose_printf(const char *fmt, ...)
+{
+	if (!options.verbose)
+		return;
+
+	va_list args;
+	va_start(args, fmt);
+	(void)vfprintf(stderr, fmt, args);
+	va_end(args);
 }
 
 static inline int
