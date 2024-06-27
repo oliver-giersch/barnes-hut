@@ -112,6 +112,9 @@ main(int argc, char *argv[argc])
 	}
 
 	verbose_printf("begin simulation ...\n");
+	if (!options.verbose)
+		// Print only the CSV file header.
+		fprintf(stdout, "step,build,simulate\n");
 
 	struct thread_state *state = &tls->states[0];
 	for (unsigned step = 0; step_continue(step); step++) {
@@ -295,6 +298,7 @@ thread_step(struct thread_state *state, unsigned step)
 {
 	int res;
 	struct timespec start, stop;
+	long build_us, step_us;
 
 	pthread_barrier_wait(&barrier);
 
@@ -312,8 +316,8 @@ thread_step(struct thread_state *state, unsigned step)
 
 	if (state->id == 0) {
 		clock_gettime(CLOCK_MONOTONIC, &stop);
-		const long diff = time_diff(&start, &stop);
-		fprintf(stderr, "t = %u, built tree in %ld us\n", step, diff);
+		build_us = time_diff(&start, &stop);
+		// fprintf(stderr, "t = %u, built tree in %ld us\n", step, diff);
 		clock_gettime(CLOCK_MONOTONIC, &start);
 	}
 
@@ -324,14 +328,21 @@ thread_step(struct thread_state *state, unsigned step)
 
 	if (state->id == 0) {
 		clock_gettime(CLOCK_MONOTONIC, &stop);
-		const long diff = time_diff(&start, &stop);
-		fprintf(stderr, "t = %u, completed simulation in %ld us\n", step, diff);
+		step_us = time_diff(&start, &stop);
+		if (options.verbose)
+			fprintf(stderr,
+				"step t = %u:\n"
+				"\tbuilt tree in: %ld us\n"
+				"\tsimulation in: %ld us\n",
+				step, build_us, step_us);
+		else
+			fprintf(stdout, "%u,%ld,%ld\n", step, build_us, step_us);
 	}
 
 	if (atomic_load_explicit(&thread_errno, memory_order_acquire))
 		return BHE_EARLY_EXIT;
 
-	// wait for all threads to complete the current simulation step and
+	// Wait for all threads to complete the current simulation step and
 	// propagate their results, before synchronizing the global particle slice
 	// with the thread's local one.
 	pthread_barrier_wait(&barrier);

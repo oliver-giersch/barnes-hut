@@ -73,10 +73,12 @@ struct quadrant {
 	// The number of all bodies contained within the quadrant.
 	unsigned bodies;
 	// The quadrant's sub-quadrants
-	//   0: lower-left
-	//   1: lower-right
-	//   2: upper-left
-	//   3: upper-right
+	//
+	// |---|---|
+	// | 2 | 3 |
+	// |---|---|
+	// | 0 | 1 |
+	// |---|---|
 	struct quadrant *children[QTREE_CHILDREN];
 };
 
@@ -99,6 +101,7 @@ static struct vec2 gforce(const struct particle *p0, const struct particle *p1);
 struct particle_tree {
 	// The particle tree's root quadrant.
 	struct quadrant *root;
+	// The particle tree's local copy of the galaxy's particles.
 	struct moving_particle particles[];
 };
 
