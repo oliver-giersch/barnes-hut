@@ -3,6 +3,7 @@
 #define _XOPEN_SOURCE 700
 #endif // __linux
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,8 +38,6 @@ struct thread_state {
 	// Access to this field must be synchronized using `barrier`.
 	float radius;
 } aligned(64);
-
-#include <stdatomic.h>
 
 // The global thread error flag.
 static atomic_int thread_errno = 0;
