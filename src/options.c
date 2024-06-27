@@ -12,6 +12,7 @@
 
 #include "barnes-hut/common.h"
 
+// The default configuration options.
 struct options options = {
 	.steps	   = 0,
 	.particles = 100000,
@@ -21,6 +22,7 @@ struct options options = {
 	.threads   = 1,
 	.seed	   = 0,
 	.optimize  = false,
+	.verbose   = false,
 };
 
 static inline int parse_arg_ull(const char *name, const char *optarg,
@@ -52,13 +54,14 @@ options_parse(int argc, char *argv[argc])
 		{ "seed", required_argument, NULL, 's' },
 		{ "theta", required_argument, NULL, THETA },
 		{ "optimize", no_argument, NULL, 'o' },
+		{ "verbose", no_argument, NULL, 'v' },
 		{ 0, 0, 0, 0 },
 	};
 
 	int res = 0;
 	while (true) {
 		const int opt
-			= getopt_long(argc, argv, "t:n:m:r:p:s:ho", long_opts, NULL);
+			= getopt_long(argc, argv, "t:n:m:r:p:s:hov", long_opts, NULL);
 
 		unsigned long long ull;
 		float f;
@@ -105,6 +108,9 @@ options_parse(int argc, char *argv[argc])
 		case 'o':
 			options.optimize = true;
 			break;
+		case 'v':
+			options.verbose = true;
+			break;
 		case 'h':
 			res = BHE_EARLY_EXIT;
 			goto out;
@@ -128,8 +134,7 @@ parse_arg_ull(const char *name, const char *optarg, unsigned long long *res)
 	char *end;
 	*res = strtoull(optarg, &end, 10);
 	if (*end != '\0' || *res == ULLONG_MAX) {
-		fprintf(stderr, "%s: Invalid %s args: %s\n", __func__, name,
-			strerror(errno));
+		fprintf(stderr, "Invalid %s args: %s\n", name, strerror(errno));
 		return errno;
 	}
 
@@ -145,14 +150,13 @@ parse_arg_float(const char *name, const char *optarg, float *res)
 	char *end;
 	*res = strtof(optarg, &end);
 	if (end != NULL || *res == HUGE_VALF || *res == -HUGE_VALF) {
-		fprintf(stderr, "%s: Invalid %s args: %s\n", __func__, name,
-			strerror(errno));
+		fprintf(stderr, "Invalid %s arg: %s\n", name, strerror(errno));
 		return errno;
 	}
 
 	if (*res < 0.0) {
-		fprintf(stderr, "%s: Invalid %s args: Negative valute not permitted\n",
-			__func__, name);
+		fprintf(stderr, "Invalid %s arg: Negative valute not permitted\n",
+			name);
 		return EINVAL;
 	}
 
@@ -173,6 +177,7 @@ print_usage(const char *exe)
 		"-p [THREADS], --threads=[THREADS]  The number of threads to use for the simulation.\n"
 		"-s [SEED], --seed=[SEED]           The seed for random number generation (0..UINT_MAX).\n"
 		"-o, --optimize                     The flag for enabling memory hierachy optimizations.\n"
+		"-v, --verbose                      The flag for enabling verbose output.\n"
 		"-h, --help                         Print this help and exit.\n"
 #ifdef DISPLAY
 		"-d [DIM], --dimension=[DIM]\n"

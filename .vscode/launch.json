@@ -8,7 +8,9 @@
             "program": "${workspaceFolder}/barnes-hut",
             "args": [
                 "-t",
-                "0"
+                "0",
+                "-n",
+                "100000"
             ],
             "cwd": "${workspaceFolder}",
             "expressions": "native"

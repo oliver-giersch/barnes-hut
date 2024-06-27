@@ -344,7 +344,7 @@ vec2_divassign(struct vec2 *v, float t)
 static inline bool
 vec2_eql(const struct vec2 *v, const struct vec2 *u)
 {
-	return feql(v->x, u->y) && feql(v->y, u->y);
+	return feql(v->x, u->x) && feql(v->y, u->y);
 }
 
 static inline float

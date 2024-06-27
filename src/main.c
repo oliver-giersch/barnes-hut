@@ -7,11 +7,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <sys/mman.h>
-
 #include <errno.h>
 #include <pthread.h>
 #include <string.h>
+#include <time.h>
+
+#include <sys/mman.h>
 
 #include "barnes-hut/arena.h"
 #include "barnes-hut/common.h"
@@ -51,6 +52,8 @@ static struct threads {
 	struct thread_state states[];
 } *tls = NULL;
 
+static inline long time_diff(const struct timespec *start,
+	const struct timespec *stop);
 static int init_barrier(void);
 static struct threads *init_tls(void);
 static struct moving_particle *init_particles(void);
@@ -109,6 +112,9 @@ main(int argc, char *argv[argc])
 		goto exit;
 	}
 
+	if (options.verbose)
+		fprintf(stderr, "begin simulation ...\n");
+
 	struct thread_state *state = &tls->states[0];
 	for (unsigned step = 0; step_continue(step); step++) {
 		if ((res = thread_step(state, step)))
@@ -135,9 +141,9 @@ exit:
 		pthread_join(threads[i], &thread_res);
 
 		int tres = (int)((uintptr_t)thread_res);
-		if (res > 0)
+		if (tres > 0)
 			fprintf(stderr, "Error in joined thread %d: %s\n", i,
-				strerror(res));
+				strerror(tres));
 		thread_deinit(i);
 	}
 
@@ -168,6 +174,13 @@ arena_deinit(struct arena *arena)
 	const size_t size = (uintptr_t)arena->end - (uintptr_t)arena->curr;
 	if (munmap(arena->memory, size))
 		fprintf(stderr, "Failed to unmap arena: %s\n", strerror(errno));
+}
+
+static inline long
+time_diff(const struct timespec *start, const struct timespec *stop)
+{
+	return (stop->tv_sec - start->tv_sec) * 1e6
+		+ ((stop->tv_nsec - start->tv_nsec) / 1e3);
 }
 
 static int
@@ -208,9 +221,15 @@ init_particles(void)
 	if (unlikely(particles == NULL))
 		return NULL;
 
-	const float r = options.radius;
+	if (options.verbose)
+		fprintf(stderr, "randomizing %zu particles within radius %.3f.\n",
+			options.particles, options.radius);
+
 	for (size_t p = 0; p < options.particles; p++)
-		moving_particle_randomize(&particles[p], r);
+		moving_particle_randomize(&particles[p], options.radius);
+
+	if (options.verbose)
+		fprintf(stderr, "particle randomization complete.\n");
 
 	return particles;
 }
@@ -279,11 +298,15 @@ static int
 thread_step(struct thread_state *state, unsigned step)
 {
 	int res;
+	struct timespec start, stop;
 
 	pthread_barrier_wait(&barrier);
 	if (options.optimize && step % 10 == 0)
 		particle_tree_sort(state->tree);
 	float radius = state->radius;
+
+	if (state->id == 0)
+		clock_gettime(CLOCK_MONOTONIC, &start);
 
 	res = particle_tree_build(state->tree, radius, &state->arena);
 	if (unlikely(res)) {
@@ -291,10 +314,23 @@ thread_step(struct thread_state *state, unsigned step)
 		return res;
 	}
 
+	if (state->id == 0) {
+		clock_gettime(CLOCK_MONOTONIC, &stop);
+		const long diff = time_diff(&start, &stop);
+		fprintf(stderr, "t = %u, built tree in %ld us\n", step, diff);
+		clock_gettime(CLOCK_MONOTONIC, &start);
+	}
+
 	radius = particle_tree_simulate(state->tree, &state->slice);
 	memcpy(&particles[state->slice.offset], state->slice.from,
 		sizeof(struct moving_particle) * state->slice.len);
 	state->radius = radius;
+
+	if (state->id == 0) {
+		clock_gettime(CLOCK_MONOTONIC, &stop);
+		const long diff = time_diff(&start, &stop);
+		fprintf(stderr, "t = %u, completed simulation in %ld us\n", step, diff);
+	}
 
 	if (atomic_load_explicit(&thread_errno, memory_order_acquire))
 		return BHE_EARLY_EXIT;

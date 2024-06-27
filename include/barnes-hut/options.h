@@ -14,6 +14,7 @@ extern struct options {
 	unsigned threads;
 	unsigned seed;
 	bool optimize;
+	bool verbose;
 } options;
 
 int options_parse(int argc, char *argv[argc]);
