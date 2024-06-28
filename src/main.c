@@ -22,9 +22,13 @@
 
 // The per-thread simulation state.
 struct thread_state {
+	// The thread's ID.
 	unsigned id;
+	// The thread's local particle tree.
 	struct particle_tree *tree;
+	// The thread's assigned particle slice.
 	struct particle_slice slice;
+	// The thread's arena for quadrant allocation.
 	struct arena arena;
 	// The particle space radius to use for the next simulation step.
 	//
@@ -154,7 +158,7 @@ exit:
 	free(tls);
 	free(particles);
 
-	return (res > 0) ? res : 0;
+	return (res != BHE_EARLY_EXIT) ? res : 0;
 }
 
 int
@@ -332,7 +336,7 @@ thread_step(struct thread_state *state, unsigned step)
 		step_us = time_diff(&start, &stop);
 
 		if (options.verbose)
-			verbose_printf(stderr,
+			fprintf(stderr,
 				"step t = %u:\n"
 				"\tbuilt tree in: %ld us\n"
 				"\tsimulation in: %ld us\n",
