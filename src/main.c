@@ -106,13 +106,15 @@ main(int argc, char *argv[argc])
 			goto exit;
 	}
 
+	// Init the main thread state.
 	if ((res = thread_init(0))) {
 		atomic_store_explicit(&thread_errno, res, memory_order_release);
 		goto exit;
 	}
 
-	verbose_printf("begin simulation ...\n");
-	if (!options.verbose)
+	if (options.verbose)
+		fprintf(stderr, "begin simulation ...\n");
+	else
 		// Print only the CSV file header.
 		fprintf(stdout, "step,build,simulate\n");
 
@@ -317,7 +319,6 @@ thread_step(struct thread_state *state, unsigned step)
 	if (state->id == 0) {
 		clock_gettime(CLOCK_MONOTONIC, &stop);
 		build_us = time_diff(&start, &stop);
-		// fprintf(stderr, "t = %u, built tree in %ld us\n", step, diff);
 		clock_gettime(CLOCK_MONOTONIC, &start);
 	}
 
@@ -329,8 +330,9 @@ thread_step(struct thread_state *state, unsigned step)
 	if (state->id == 0) {
 		clock_gettime(CLOCK_MONOTONIC, &stop);
 		step_us = time_diff(&start, &stop);
+
 		if (options.verbose)
-			fprintf(stderr,
+			verbose_printf(stderr,
 				"step t = %u:\n"
 				"\tbuilt tree in: %ld us\n"
 				"\tsimulation in: %ld us\n",

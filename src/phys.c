@@ -82,14 +82,22 @@ struct quadrant {
 	struct quadrant *children[QTREE_CHILDREN];
 };
 
+// Returns `true` if the quadrant represents a leaf in a particle tree.
 static inline bool quadrant_is_leaf(const struct quadrant *quad);
+// Arena-allocates and initializes a new quadrant for the given center and
+// dimensions.
 static inline struct quadrant *quadrant_malloc(struct arena *,
 	struct particle center, float x, float y, float len);
+// Inserts the given particle into one of the quadrant's children.
 static int quadrant_insert(struct quadrant *quad, const struct particle *part,
 	struct arena *arena);
+// Inserts the particle into the given child quadrant.
 static int quadrant_insert_child(struct quadrant *quad,
 	const struct particle *part, struct arena *arena);
+// Recursively updates the center point of the given quadrant.
 static struct vec2 quadrant_update_center(struct quadrant *quad);
+// Recursively updates and applies gravitational force to all particles
+// contained in the given quadrant.
 static void quadrant_update_force(struct quadrant *quad,
 	const struct particle *part, struct vec2 *force);
 
@@ -136,11 +144,13 @@ particle_tree_build(struct particle_tree *tree, float radius,
 	if (likely(tree->root != NULL))
 		arena_reset(arena);
 
+	// Initialize the root quadrant covering the entire galaxy.
 	tree->root = quadrant_malloc(arena, tree->particles[0].part, -1 * radius,
 		-1 * radius, 2 * radius);
 	if (unlikely(tree->root == NULL))
 		return ENOMEM;
 
+	// Insert each remaining particle into the tree.
 	for (size_t i = 1; i < options.particles; i++) {
 		const struct particle *part = &tree->particles[i].part;
 		if ((res = unlikely(quadrant_insert(tree->root, part, arena))))
@@ -155,13 +165,11 @@ float
 particle_tree_simulate(struct particle_tree *tree,
 	const struct particle_slice *slice)
 {
-	const struct vec2 center = zero_vec;
-
-	struct vec2 force  = zero_vec;
 	float max_dist	   = 0.0;
 	float dist_squared = 0.0;
 
 	for (size_t p = 0; p < slice->len; p++) {
+		struct vec2 force	  = zero_vec;
 		struct particle *part = &slice->from[p].part;
 		quadrant_update_force(tree->root, part, &force);
 
@@ -169,11 +177,9 @@ particle_tree_simulate(struct particle_tree *tree,
 		vec2_divassign(&delta_force, part->mass);
 		vec2_addassign(&slice->from[p].vel, &delta_force);
 
-		dist_squared = vec2_dist_sq(&center, &part->pos);
+		dist_squared = vec2_dist_sq(&zero_vec, &part->pos);
 		if (dist_squared > max_dist)
 			max_dist = dist_squared;
-
-		force = zero_vec;
 	}
 
 	return sqrtf(max_dist);
@@ -218,8 +224,9 @@ quadrant_insert(struct quadrant *quad, const struct particle *part,
 	int res;
 
 	if (quadrant_is_leaf(quad)) {
-		if (vec2_eql(&quad->center.pos, &part->pos)
-			|| feql(quad->len / 2, 0.0)) {
+		const bool absorb = vec2_eql(&quad->center.pos, &part->pos)
+			|| feql(quad->len / 2, 0.0);
+		if (absorb) {
 			quad->center.mass += part->mass;
 			return 0;
 		}
@@ -378,7 +385,10 @@ sort_by_z_curve(const struct moving_particle *p0,
 	const unsigned x1 = (unsigned)p1->part.pos.x;
 	const unsigned y1 = (unsigned)p1->part.pos.y;
 
-	return (morton_number(x0, y0, 0) < morton_number(x1, y1, 0)) ? -1 : 1;
+	if (morton_number(x0, y0, 0) < (morton_number(x1, y1, 0)))
+		return -1;
+	else
+		return 1;
 }
 
 static struct vec2

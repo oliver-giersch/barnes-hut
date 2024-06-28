@@ -8,9 +8,13 @@
 
 // The global options and settings.
 extern struct options {
+	// The number of simulation steps to perform (0 means infinite).
 	unsigned steps;
+	// The number of particles to simulate.
 	size_t particles;
+	// The initial mass of each particle.
 	float max_mass;
+	// The initial radius of the galaxy.
 	float radius;
 	float theta;
 	unsigned threads;
