@@ -28,7 +28,7 @@ struct thread_state {
 	struct particle_tree *tree;
 	// The thread's assigned particle slice.
 	struct particle_slice slice;
-	// The thread's arena for quadrant allocation.
+	// The thread's arena for octant allocation.
 	struct arena arena;
 	// The particle space radius to use for the next simulation step.
 	//
@@ -48,7 +48,7 @@ static atomic_int thread_errno = 0;
 // The global thread synchronization barrier.
 static pthread_barrier_t barrier;
 // The globally shared and synchronized region of all simulated particles.
-static struct moving_particle *particles;
+static struct accel_particle *particles;
 // The TLS holding the state of all threads.
 static struct threads {
 	unsigned len;
@@ -59,12 +59,12 @@ static inline long time_diff(const struct timespec *start,
 	const struct timespec *stop);
 static int init_barrier(void);
 static struct threads *init_tls(void);
-static struct moving_particle *init_particles(void);
+static struct accel_particle *init_particles(void);
 static void *thread_main(void *args);
 static int thread_init(unsigned id);
 static void thread_deinit(unsigned id);
 static int thread_step(struct thread_state *state, unsigned step);
-static void sync_tree_particles(struct moving_particle tree_particles[],
+static void sync_tree_particles(struct accel_particle tree_particles[],
 	const struct particle_slice *slice);
 
 static const size_t kib = (size_t)1 << 10;
@@ -217,14 +217,14 @@ init_tls(void)
 	return tls;
 }
 
-static struct moving_particle *
+static struct accel_particle *
 init_particles(void)
 {
 	if (options.seed != 0)
 		srandom(options.seed);
 
-	struct moving_particle *particles
-		= malloc(sizeof(struct moving_particle) * options.particles);
+	struct accel_particle *particles
+		= malloc(sizeof(struct accel_particle) * options.particles);
 	if (unlikely(particles == NULL))
 		return NULL;
 
@@ -232,7 +232,7 @@ init_particles(void)
 		options.particles, options.radius);
 
 	for (size_t p = 0; p < options.particles; p++)
-		moving_particle_randomize(&particles[p], options.radius);
+		accel_particle_randomize(&particles[p], options.radius);
 
 	verbose_printf("particle randomization complete.\n");
 
@@ -271,7 +271,7 @@ thread_init(unsigned id)
 	if (unlikely((res = arena_init(&state->arena, arena_size))))
 		return res;
 
-	struct moving_particle *tree_particles
+	struct accel_particle *tree_particles
 		= particle_tree_particles(state->tree);
 
 	const size_t len   = options.particles / options.threads;
@@ -328,7 +328,7 @@ thread_step(struct thread_state *state, unsigned step)
 
 	radius = particle_tree_simulate(state->tree, &state->slice);
 	memcpy(&particles[state->slice.offset], state->slice.from,
-		sizeof(struct moving_particle) * state->slice.len);
+		sizeof(struct accel_particle) * state->slice.len);
 	state->radius = radius;
 
 	if (state->id == 0) {
@@ -358,21 +358,21 @@ thread_step(struct thread_state *state, unsigned step)
 }
 
 static void
-sync_tree_particles(struct moving_particle tree_particles[],
+sync_tree_particles(struct accel_particle tree_particles[],
 	const struct particle_slice *slice)
 {
 	if (slice == NULL) {
 		memcpy(tree_particles, particles,
-			sizeof(struct moving_particle) * options.particles);
+			sizeof(struct accel_particle) * options.particles);
 		return;
 	}
 
 	// Copy everything before the slice over into the local particle slice.
 	memcpy(&tree_particles[0], &particles[0],
-		sizeof(struct moving_particle) * slice->offset);
+		sizeof(struct accel_particle) * slice->offset);
 	// Copy everything after the slice over into the local particle slice.
 	const size_t after = slice->offset + slice->len;
 	const size_t len   = options.particles - after;
 	memcpy(&tree_particles[after], &particles[after],
-		sizeof(struct moving_particle) * len);
+		sizeof(struct accel_particle) * len);
 }

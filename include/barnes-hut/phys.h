@@ -3,25 +3,25 @@
 
 #include <stddef.h>
 
-// A 2-dimensional vector.
-struct vec2 {
-	float x, y;
+// A 3-dimensional vector.
+struct vec3 {
+	float x, y, z;
 };
 
 // A point-mass particle.
 struct particle {
-	struct vec2 pos;
+	struct vec3 pos;
 	float mass;
 };
 
 // A moving point-mass particle.
-struct moving_particle {
+struct accel_particle {
 	struct particle part;
-	struct vec2 vel;
+	struct vec3 vel;
 };
 
 // Randomizes the coordinates of the given particle within a cirle or radius r
-void moving_particle_randomize(struct moving_particle *part, float r);
+void accel_particle_randomize(struct accel_particle *part, float r);
 
 // A consecutive view into the global array of particles.
 struct particle_slice {
@@ -30,16 +30,16 @@ struct particle_slice {
 	// The slice's length.
 	size_t len;
 	// The slice's start pointer.
-	struct moving_particle *from;
+	struct accel_particle *from;
 };
 
 // A four-way partition of a 2-dimensional space containing particles.
-struct quadrant;
+struct octant;
 
-// An fixed size arena allocator for quadrants.
+// An fixed size arena allocator for octants.
 struct arena;
 
-// A tree of quadrants containing particles.
+// A tree of octants containing particles.
 struct particle_tree;
 
 // Allocates and initializes a particle tree.
@@ -62,6 +62,6 @@ float particle_tree_simulate(struct particle_tree *tree,
 	const struct particle_slice *slice);
 
 // Returns the particle tree's local copy of the global particle array.
-struct moving_particle *particle_tree_particles(struct particle_tree *tree);
+struct accel_particle *particle_tree_particles(struct particle_tree *tree);
 
 #endif // BARNES_HUT_PHYS_H
