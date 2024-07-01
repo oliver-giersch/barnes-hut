@@ -8,6 +8,9 @@
 
 enum error {
 	BHE_EARLY_EXIT = -1,
+#ifdef RENDER
+	BHE_RENDER_ERROR = -2,
+#endif // RENDER
 };
 
 #endif // BARNES_HUT_COMMON_H

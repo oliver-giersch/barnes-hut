@@ -19,6 +19,9 @@
 #include "barnes-hut/common.h"
 #include "barnes-hut/options.h"
 #include "barnes-hut/phys.h"
+#ifdef RENDER
+#include "barnes-hut/render.h"
+#endif // RENDER
 
 // The per-thread simulation state.
 struct thread_state {
@@ -84,6 +87,11 @@ main(int argc, char *argv[argc])
 	if ((res = options_parse(argc, argv)))
 		return (res == BHE_EARLY_EXIT) ? 0 : res;
 
+#ifdef RENDER
+	if ((res = render_init()))
+		return res;
+#endif // RENDER
+
 	// initialize global state.
 	if (unlikely((res = init_barrier())))
 		return ENOMEM;
@@ -134,12 +142,16 @@ main(int argc, char *argv[argc])
 		float max_radius = 0.0;
 		for (unsigned t = 0; t < options.threads; t++) {
 			const float radius = tls->states[t].radius;
-			if (radius > radius)
+			if (radius > max_radius)
 				max_radius = radius;
 		}
 
 		for (unsigned t = 0; t < options.threads; t++)
 			tls->states[t].radius = max_radius;
+
+#ifdef RENDER
+		render_scene(particles, tls->states[0].radius);
+#endif // RENDER
 	}
 
 exit:
@@ -157,6 +169,10 @@ exit:
 	free(threads);
 	free(tls);
 	free(particles);
+
+#ifdef RENDER
+	render_deinit();
+#endif // RENDER
 
 	return (res != BHE_EARLY_EXIT) ? res : 0;
 }
@@ -286,7 +302,7 @@ thread_init(unsigned id)
 	};
 	state->radius = options.radius;
 
-	sync_tree_particles(particle_tree_particles(state->tree), NULL);
+	sync_tree_particles(tree_particles, NULL);
 
 	return 0;
 }
@@ -314,6 +330,8 @@ thread_step(struct thread_state *state, unsigned step)
 		particle_tree_sort(state->tree);
 	float radius = state->radius;
 
+	// TODO: sufficient to do this once, since the tree is RO after the build
+	// step.
 	res = particle_tree_build(state->tree, radius, &state->arena);
 	if (unlikely(res)) {
 		atomic_store_explicit(&thread_errno, res, memory_order_release);

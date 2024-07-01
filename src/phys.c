@@ -100,8 +100,8 @@ static int octant_insert_child(struct octant *oct, const struct particle *part,
 static struct vec3 octant_update_center(struct octant *oct);
 // Recursively updates and applies gravitational force to all particles
 // contained in the given octant.
-static void octant_update_force(struct octant *oct, const struct particle *part,
-	struct vec3 *force);
+static void octant_update_force(const struct octant *oct,
+	const struct particle *part, struct vec3 *force);
 
 static inline uint64_t morton_number(unsigned x, unsigned y, unsigned z);
 static inline int sort_by_z_curve(const struct accel_particle *p0,
@@ -163,6 +163,8 @@ particle_tree_build(struct particle_tree *tree, float radius,
 	return 0;
 }
 
+// TODO: const struct particle_tree (<- the "global" one), separate local slice
+// from particle tree, using the slice abstraction!
 float
 particle_tree_simulate(struct particle_tree *tree,
 	const struct particle_slice *slice)
@@ -296,12 +298,13 @@ octant_update_center(struct octant *oct)
 	}
 
 	vec3_divassign(&new_center, oct->center.mass);
+	// TODO: function cant take a const pointer because of this
 	oct->center.pos = new_center;
 	return new_center;
 }
 
 static void
-octant_update_force(struct octant *oct, const struct particle *part,
+octant_update_force(const struct octant *oct, const struct particle *part,
 	struct vec3 *force)
 {
 	if (octant_is_leaf(oct)) {

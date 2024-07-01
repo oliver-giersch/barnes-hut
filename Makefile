@@ -12,6 +12,12 @@ INC := -I./include
 LIB := -lpthread -lm
 
 # adjust SRC based on XWIN before!
+ifeq ($(RENDER),1)
+	CFLAGS += -DRENDER
+	SRC    += src/render.c
+	LIB    += -lSDL2 -lGL -lGLU
+endif
+
 OBJ := $(SRC:%.c=%.o)
 DEP := $(SRC:%.c=%.d)
 
