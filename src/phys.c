@@ -40,6 +40,11 @@ randomf(void)
 	return (float)random() / (float)RAND_MAX;
 }
 
+static inline uint64_t morton_number(unsigned x, unsigned y, unsigned z);
+static inline int sort_by_z_curve(const struct accel_particle *p0,
+	const struct accel_particle *p1);
+static struct vec3 gforce(const struct particle *p0, const struct particle *p1);
+
 static inline void vec3_addassign(struct vec3 *v, const struct vec3 *u);
 static inline void vec3_subassign(struct vec3 *v, const struct vec3 *u);
 static inline void vec3_mulassign(struct vec3 *v, float t);
@@ -49,21 +54,31 @@ static inline float vec3_dist_sq(const struct vec3 *v, const struct vec3 *u);
 static inline float vec3_dist(const struct vec3 *v, const struct vec3 *u);
 
 void
-accel_particle_randomize(struct accel_particle *part, float r)
+randomize_particles(struct accel_particle particles[], float r)
 {
-	const float x	 = randomf() * 2 * r - r;
-	const float ymax = sqrtf(sq(r) - sq(x));
-	const float y	 = randomf() * 2 * ymax - ymax;
-	const float zmax = sqrt(sq(r) - sq(x) - sq(y));
-	const float z	 = randomf() * 2 * zmax - zmax;
+	for (size_t p = 0; p < options.particles; p++) {
+		const float x	 = randomf() * 2 * r - r;
+		const float ymax = sqrtf(sq(r) - sq(x));
+		const float y	 = randomf() * 2 * ymax - ymax;
+		const float zmax = sqrt(sq(r) - sq(x) - sq(y));
+		const float z	 = randomf() * 2 * zmax - zmax;
 
-	*part = (struct accel_particle) {
-		.part = {
-			.pos = { x, y, z },
-			.mass = options.max_mass,
-		},
-		.vel = zero_vec,
-	};
+		particles[p] = (struct accel_particle) {
+			.part = {
+				.pos = { x, y, z },
+				.mass = options.max_mass,
+			},
+			.vel = zero_vec,
+		};
+	}
+}
+
+void
+sort_particles(struct accel_particle particles[])
+{
+	typedef int (*cmp_fn)(const void *, const void *);
+	qsort(particles, options.particles, sizeof(struct accel_particle),
+		(cmp_fn)&sort_by_z_curve);
 }
 
 #define OTREE_CHILDREN 8
@@ -103,43 +118,9 @@ static struct vec3 octant_update_center(struct octant *oct);
 static void octant_update_force(const struct octant *oct,
 	const struct particle *part, struct vec3 *force);
 
-static inline uint64_t morton_number(unsigned x, unsigned y, unsigned z);
-static inline int sort_by_z_curve(const struct accel_particle *p0,
-	const struct accel_particle *p1);
-static struct vec3 gforce(const struct particle *p0, const struct particle *p1);
-
-struct particle_tree {
-	// The particle tree's root octant.
-	struct octant *root;
-	// The particle tree's local copy of the galaxy's particles.
-	struct accel_particle particles[];
-};
-
-struct particle_tree *
-particle_tree_init(void)
-{
-	const size_t size = sizeof(struct particle_tree)
-		+ (sizeof(struct accel_particle) * options.particles);
-	struct particle_tree *tree = malloc(size);
-	if (unlikely(tree == NULL))
-		return NULL;
-
-	*tree = (struct particle_tree) { .root = NULL };
-
-	return tree;
-}
-
-void
-particle_tree_sort(struct particle_tree *tree)
-{
-	typedef int (*cmp_fn)(const void *, const void *);
-	qsort(tree->particles, options.particles, sizeof(struct accel_particle),
-		(cmp_fn)&sort_by_z_curve);
-}
-
 int
-particle_tree_build(struct particle_tree *tree, float radius,
-	struct arena *arena)
+particle_tree_build(struct particle_tree *tree,
+	const struct accel_particle particles[], float radius, struct arena *arena)
 {
 	int res;
 
@@ -147,14 +128,14 @@ particle_tree_build(struct particle_tree *tree, float radius,
 		arena_reset(arena);
 
 	// Initialize the root octant covering the entire galaxy.
-	tree->root = octant_malloc(arena, tree->particles[0].part, -1 * radius,
+	tree->root = octant_malloc(arena, particles[0].part, -1 * radius,
 		-1 * radius, -1 * radius, 2 * radius);
 	if (unlikely(tree->root == NULL))
 		return ENOMEM;
 
 	// Insert each remaining particle into the tree.
 	for (size_t i = 1; i < options.particles; i++) {
-		const struct particle *part = &tree->particles[i].part;
+		const struct particle *part = &particles[i].part;
 		if ((res = unlikely(octant_insert(tree->root, part, arena))))
 			return res;
 	}
@@ -163,36 +144,30 @@ particle_tree_build(struct particle_tree *tree, float radius,
 	return 0;
 }
 
-// TODO: const struct particle_tree (<- the "global" one), separate local slice
-// from particle tree, using the slice abstraction!
 float
-particle_tree_simulate(struct particle_tree *tree,
+particle_tree_simulate(const struct particle_tree *tree,
 	const struct particle_slice *slice)
 {
 	float max_dist	   = 0.0;
 	float dist_squared = 0.0;
 
 	for (size_t p = 0; p < slice->len; p++) {
-		struct vec3 force	  = zero_vec;
-		struct particle *part = &slice->from[p].part;
-		octant_update_force(tree->root, part, &force);
+		struct vec3 force		  = zero_vec;
+		struct accel_particle *ap = &slice->from[p];
+		octant_update_force(tree->root, &ap->part, &force);
 
-		struct vec3 delta_force = force;
-		vec3_divassign(&delta_force, part->mass);
-		vec3_addassign(&slice->from[p].vel, &delta_force);
+		// Apply the calculated force to the particle's velocity.
+		vec3_divassign(&force, ap->part.mass);
+		vec3_addassign(&ap->vel, &force);
+		// Apply the calculated velocity the particle's position.
+		vec3_addassign(&ap->part.pos, &ap->vel);
 
-		dist_squared = vec3_dist_sq(&zero_vec, &part->pos);
+		dist_squared = vec3_dist_sq(&zero_vec, &ap->part.pos);
 		if (dist_squared > max_dist)
 			max_dist = dist_squared;
 	}
 
 	return sqrtf(max_dist);
-}
-
-struct accel_particle *
-particle_tree_particles(struct particle_tree *tree)
-{
-	return &tree->particles[0];
 }
 
 static inline bool
@@ -265,6 +240,7 @@ octant_insert_child(struct octant *oct, const struct particle *part,
 	// Determine, if pos lies in bottom (0/1) or top (2/3) octant.
 	if (part->pos.y > y + len)
 		c += 2, y += len;
+	// Determine, if pos lies in front or back octant.
 	if (part->pos.z > z + len)
 		c += (OTREE_CHILDREN / 2), z += len;
 
@@ -298,7 +274,6 @@ octant_update_center(struct octant *oct)
 	}
 
 	vec3_divassign(&new_center, oct->center.mass);
-	// TODO: function cant take a const pointer because of this
 	oct->center.pos = new_center;
 	return new_center;
 }

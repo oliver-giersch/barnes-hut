@@ -16,6 +16,7 @@ static SDL_Window *window	  = NULL;
 static SDL_GLContext *context = NULL;
 
 static void render_axes(float radius);
+static void render_point(const struct vec3 *v, float radius);
 
 int
 render_init(void)
@@ -36,15 +37,10 @@ render_init(void)
 
 	glViewport(0, 0, width, height);
 
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(-500.0, 500.0, -500.0, 500.0, 0.1, 1000.0);
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-
 	glEnable(GL_DEPTH_TEST);
-	glPointSize(1.0);
+	glPointSize(1.25);
+
+	render_axes(options.radius);
 
 	SDL_GL_SwapWindow(window);
 	return 0;
@@ -65,35 +61,44 @@ render_deinit(void)
 	SDL_Quit();
 }
 
-void
+bool
 render_scene(const struct accel_particle particles[], float radius)
 {
-	// TODO: check for close event
+	SDL_Event event;
+	while (SDL_PollEvent(&event))
+		if (event.type == SDL_QUIT)
+			return true;
+
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glLoadIdentity();
-
-	gluLookAt(1.25 * radius, 1.25 * radius, 1.25 * radius, 0.0, 0.0, 0.0, 0.0,
-		1.0, 0.0);
 
 	render_axes(radius);
 
 	glBegin(GL_POINTS);
-	for (size_t p = 0; p < options.particles; p++) {
-		const struct vec3 *pos = &particles[p].part.pos;
-		glVertex3f(pos->x, pos->y, pos->z);
-	}
-
+	for (size_t p = 0; p < options.particles; p++)
+		render_point(&particles[p].part.pos, radius);
 	glEnd();
+
 	SDL_GL_SwapWindow(window);
 
-	// preparation: mmapped SHM file, byte buffer:
-	// glReadPixels(0, 0, windowWidth, windowHeight, GL_RGB, GL_UNSIGNED_BYTE,
-	// pixelData);
+	return false;
 }
 
 static void
 render_axes(float radius)
 {
+	const float d = 2 * radius;
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(-d, d, -d, d, 0.1, 1.75 * d);
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	gluLookAt(1.1 * radius, 1.1 * radius, 1.1 * radius, 0.0, 0.0, 0.0, 0.0, 1.0,
+		0.0);
+
 	glBegin(GL_LINES);
 
 	// x-axis (red)
@@ -110,4 +115,36 @@ render_axes(float radius)
 	glVertex3f(0.0, 0.0, radius);
 
 	glEnd();
+}
+
+static inline float
+sq(float x)
+{
+	return x * x;
+}
+
+static inline float
+vec3_dist_sq(const struct vec3 *v, const struct vec3 *u)
+{
+	return sq(v->x - u->x) + sq(v->y - u->y) + sq(v->z - u->z);
+}
+
+static inline float
+vec3_dist(const struct vec3 *v, const struct vec3 *u)
+{
+	return sqrtf(vec3_dist_sq(v, u));
+}
+
+static void
+render_point(const struct vec3 *v, float radius)
+{
+	// const struct vec3 cam = { 1.1 * radius, 1.1 * radius, 1.1 * radius };
+	//  const float dist	  = vec3_dist(v, &cam);
+	//  const float blue	  = 1 - 1 / (1 + (0.001 * dist));
+
+	glColor3f(0.0, 0.5, 1.0); // blue points, make dimmer with growing distance
+							  // from camera? (1 - (ln(1+0.0001*x)/ln(1+)))
+	// return (1 - 1 / (1 + k * x)) * 0.5
+
+	glVertex3f(v->x, v->y, v->z);
 }

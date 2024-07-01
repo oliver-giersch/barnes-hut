@@ -10,7 +10,7 @@
                 "-t",
                 "0",
                 "-n",
-                "100000"
+                "100"
             ],
             "cwd": "${workspaceFolder}",
             "expressions": "native"

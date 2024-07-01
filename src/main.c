@@ -1,6 +1,6 @@
 // Required for `pthread_barrier`.
 #ifdef __linux
-#define _XOPEN_SOURCE 700
+#define _XOPEN_SOURCE 600
 #endif // __linux
 
 #include <stdatomic.h>
@@ -27,12 +27,10 @@
 struct thread_state {
 	// The thread's ID.
 	unsigned id;
-	// The thread's local particle tree.
-	struct particle_tree *tree;
+	// The thread's local copy of the global particle list.
+	struct accel_particle *particles;
 	// The thread's assigned particle slice.
 	struct particle_slice slice;
-	// The thread's arena for octant allocation.
-	struct arena arena;
 	// The particle space radius to use for the next simulation step.
 	//
 	// After completion of a step, the thread sets this field to the greatest
@@ -52,6 +50,12 @@ static atomic_int thread_errno = 0;
 static pthread_barrier_t barrier;
 // The globally shared and synchronized region of all simulated particles.
 static struct accel_particle *particles;
+// The memory arena for octant allocation.
+static struct arena arena;
+// The globally shared and synchronized tree of particles.
+//
+// Access to the tree must be synchronized using `barrier`.
+static struct particle_tree tree;
 // The TLS holding the state of all threads.
 static struct threads {
 	unsigned len;
@@ -66,19 +70,23 @@ static struct accel_particle *init_particles(void);
 static void *thread_main(void *args);
 static int thread_init(unsigned id);
 static void thread_deinit(unsigned id);
-static int thread_step(struct thread_state *state, unsigned step);
+static int thread_step(struct thread_state *state, unsigned step, long *us);
+static int build_step(unsigned step, float radius, long *us);
 static void sync_tree_particles(struct accel_particle tree_particles[],
 	const struct particle_slice *slice);
 
-static const size_t kib = (size_t)1 << 10;
-static const size_t mib = kib << 10;
-static const size_t gib = mib << 10;
+static const size_t kib		   = (size_t)1 << 10;
+static const size_t mib		   = kib << 10;
+static const size_t gib		   = mib << 10;
+static const size_t arena_size = 4 * gib;
 
 static inline bool
 step_continue(unsigned step)
 {
 	return options.steps == 0 || step < options.steps;
 }
+
+#include <unistd.h>
 
 int
 main(int argc, char *argv[argc])
@@ -92,15 +100,18 @@ main(int argc, char *argv[argc])
 		return res;
 #endif // RENDER
 
-	// initialize global state.
+	// Initialize the global (shared) state.
+
 	if (unlikely((res = init_barrier())))
 		return ENOMEM;
+	if (unlikely((res = arena_init(&arena, arena_size))))
+		return res;
 	if (unlikely((particles = init_particles()) == NULL))
 		return ENOMEM;
 	if (unlikely((tls = init_tls()) == NULL))
 		return ENOMEM;
 
-	// spawn p - 1 additional worker threads
+	// Spawn p - 1 additional worker threads.
 	const unsigned pthreads = options.threads - 1;
 	pthread_t *threads		= malloc(sizeof(pthread_t) * pthreads);
 	if (unlikely(threads == NULL))
@@ -132,8 +143,20 @@ main(int argc, char *argv[argc])
 
 	struct thread_state *state = &tls->states[0];
 	for (unsigned step = 0; step_continue(step); step++) {
-		if ((res = thread_step(state, step)))
+		long build_us, step_us;
+		if ((res = build_step(step, state->radius, &build_us)))
 			goto exit;
+		if ((res = thread_step(state, step, &step_us)))
+			goto exit;
+
+		if (options.verbose)
+			fprintf(stderr,
+				"step t = %u:\n"
+				"\tbuilt tree in: %ld us\n"
+				"\tsimulation in: %ld us\n",
+				step, build_us, step_us);
+		else
+			; // fprintf(stdout, "%u,%ld,%ld\n", step, build_us, step_us);
 
 		// Recalculate the radius for the next iteration step.
 		//
@@ -150,7 +173,9 @@ main(int argc, char *argv[argc])
 			tls->states[t].radius = max_radius;
 
 #ifdef RENDER
-		render_scene(particles, tls->states[0].radius);
+		if (render_scene(particles, tls->states[0].radius))
+			goto exit;
+		usleep(500000);
 #endif // RENDER
 	}
 
@@ -169,6 +194,7 @@ exit:
 	free(threads);
 	free(tls);
 	free(particles);
+	arena_deinit(&arena);
 
 #ifdef RENDER
 	render_deinit();
@@ -246,10 +272,7 @@ init_particles(void)
 
 	verbose_printf("randomizing %zu particles within radius %.3f.\n",
 		options.particles, options.radius);
-
-	for (size_t p = 0; p < options.particles; p++)
-		accel_particle_randomize(&particles[p], options.radius);
-
+	randomize_particles(particles, options.radius);
 	verbose_printf("particle randomization complete.\n");
 
 	return particles;
@@ -268,7 +291,7 @@ thread_main(void *args)
 
 	struct thread_state *state = &tls->states[id];
 	for (unsigned step = 0; step_continue(step); step++)
-		if ((res = thread_step(state, step)))
+		if ((res = thread_step(state, step, NULL)))
 			return (void *)((uintptr_t)res);
 
 	return NULL;
@@ -277,18 +300,15 @@ thread_main(void *args)
 static int
 thread_init(unsigned id)
 {
-	static const size_t arena_size = 4 * gib;
-
 	struct thread_state *state = &tls->states[id];
-	int res;
 
-	if (unlikely((state->tree = particle_tree_init()) == NULL))
-		return ENOMEM;
-	if (unlikely((res = arena_init(&state->arena, arena_size))))
-		return res;
-
-	struct accel_particle *tree_particles
-		= particle_tree_particles(state->tree);
+	if (id == 0)
+		state->particles = NULL;
+	else {
+		const size_t size = sizeof(struct accel_particle) * options.particles;
+		if (unlikely((state->particles = malloc(size)) == NULL))
+			return ENOMEM;
+	}
 
 	const size_t len   = options.particles / options.threads;
 	const size_t rem   = options.particles % options.threads;
@@ -298,11 +318,12 @@ thread_init(unsigned id)
 	state->slice = (struct particle_slice) {
 		.offset = start,
 		.len	= (id == options.threads - 1) ? len + rem : len,
-		.from	= &tree_particles[start],
+		.from	= (id == 0) ? particles : &state->particles[start],
 	};
 	state->radius = options.radius;
 
-	sync_tree_particles(tree_particles, NULL);
+	if (id != 0)
+		sync_tree_particles(state->particles, NULL);
 
 	return 0;
 }
@@ -311,66 +332,62 @@ static void
 thread_deinit(unsigned id)
 {
 	struct thread_state *state = &tls->states[id];
-	free(state->tree);
-	arena_deinit(&state->arena);
+	free(state->particles);
 }
 
 static int
-thread_step(struct thread_state *state, unsigned step)
+thread_step(struct thread_state *state, unsigned step, long *us)
 {
-	int res;
 	struct timespec start, stop;
-	long build_us, step_us;
 
 	pthread_barrier_wait(&barrier);
 
+	if (atomic_load_explicit(&thread_errno, memory_order_acquire))
+		return BHE_EARLY_EXIT;
+
 	if (state->id == 0)
 		clock_gettime(CLOCK_MONOTONIC, &start);
-	if (options.optimize && step % 10 == 0)
-		particle_tree_sort(state->tree);
-	float radius = state->radius;
 
-	// TODO: sufficient to do this once, since the tree is RO after the build
-	// step.
-	res = particle_tree_build(state->tree, radius, &state->arena);
-	if (unlikely(res)) {
-		atomic_store_explicit(&thread_errno, res, memory_order_release);
-		return res;
-	}
-
-	if (state->id == 0) {
-		clock_gettime(CLOCK_MONOTONIC, &stop);
-		build_us = time_diff(&start, &stop);
-		clock_gettime(CLOCK_MONOTONIC, &start);
-	}
-
-	radius = particle_tree_simulate(state->tree, &state->slice);
+	float radius = particle_tree_simulate(&tree, &state->slice);
 	memcpy(&particles[state->slice.offset], state->slice.from,
 		sizeof(struct accel_particle) * state->slice.len);
 	state->radius = radius;
 
 	if (state->id == 0) {
 		clock_gettime(CLOCK_MONOTONIC, &stop);
-		step_us = time_diff(&start, &stop);
-
-		if (options.verbose)
-			fprintf(stderr,
-				"step t = %u:\n"
-				"\tbuilt tree in: %ld us\n"
-				"\tsimulation in: %ld us\n",
-				step, build_us, step_us);
-		else
-			fprintf(stdout, "%u,%ld,%ld\n", step, build_us, step_us);
+		*us = time_diff(&start, &stop);
 	}
-
-	if (atomic_load_explicit(&thread_errno, memory_order_acquire))
-		return BHE_EARLY_EXIT;
 
 	// Wait for all threads to complete the current simulation step and
 	// propagate their results, before synchronizing the global particle slice
 	// with the thread's local one.
 	pthread_barrier_wait(&barrier);
-	sync_tree_particles(particle_tree_particles(state->tree), &state->slice);
+
+	if (state->id != 0)
+		sync_tree_particles(state->particles, &state->slice);
+
+	return 0;
+}
+
+static int
+build_step(unsigned step, float radius, long *us)
+{
+	struct timespec start, stop;
+	int res;
+
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	if (options.optimize && step % 10 == 0)
+		sort_particles(particles);
+
+	res = particle_tree_build(&tree, particles, radius, &arena);
+	if (unlikely(res)) {
+		atomic_store_explicit(&thread_errno, res, memory_order_release);
+		pthread_barrier_wait(&barrier);
+		return res;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &stop);
+	*us = time_diff(&start, &stop);
 
 	return 0;
 }

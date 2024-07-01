@@ -20,8 +20,10 @@ struct accel_particle {
 	struct vec3 vel;
 };
 
-// Randomizes the coordinates of the given particle within a cirle or radius r
-void accel_particle_randomize(struct accel_particle *part, float r);
+// Randomizes the coordinates of the given list of particles.
+void randomize_particles(struct accel_particle part[], float r);
+// Sorts the the given list of particles by a Z-curve ordering.
+void sort_particles(struct accel_particle part[]);
 
 // A consecutive view into the global array of particles.
 struct particle_slice {
@@ -40,28 +42,20 @@ struct octant;
 struct arena;
 
 // A tree of octants containing particles.
-struct particle_tree;
-
-// Allocates and initializes a particle tree.
-//
-// Returns `NULL` on failure.
-struct particle_tree *particle_tree_init(void);
-
-// Sorts the particle tree's local array of particles.
-void particle_tree_sort(struct particle_tree *tree);
+struct particle_tree {
+	// The particle tree's root octant.
+	struct octant *root;
+};
 
 // Recursively constructs the tree structure for the current simulation step.
-int particle_tree_build(struct particle_tree *tree, float radius,
-	struct arena *arena);
+int particle_tree_build(struct particle_tree *tree,
+	const struct accel_particle particles[], float radius, struct arena *arena);
 
 // Executes the current simulation step by updating all particles encompassed
 // by the given slice.
 //
 // Returns the furthest distance to the center of all updated particles.
-float particle_tree_simulate(struct particle_tree *tree,
+float particle_tree_simulate(const struct particle_tree *tree,
 	const struct particle_slice *slice);
-
-// Returns the particle tree's local copy of the global particle array.
-struct accel_particle *particle_tree_particles(struct particle_tree *tree);
 
 #endif // BARNES_HUT_PHYS_H
