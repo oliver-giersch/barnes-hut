@@ -348,15 +348,11 @@ thread_step(struct thread_state *state, unsigned step, long *us)
 	if (state->id == 0)
 		clock_gettime(CLOCK_MONOTONIC, &start);
 
-	float radius = particle_tree_simulate(&tree, &state->slice);
-	memcpy(&particles[state->slice.offset], state->slice.from,
-		sizeof(struct accel_particle) * state->slice.len);
-	state->radius = radius;
-
-	if (state->id == 0) {
-		clock_gettime(CLOCK_MONOTONIC, &stop);
-		*us = time_diff(&start, &stop);
-	}
+	state->radius = particle_tree_simulate(&tree, &state->slice);
+	if (state->id != 0)
+		// Synchronize updated particles back.
+		memcpy(&particles[state->slice.offset], state->slice.from,
+			sizeof(struct accel_particle) * state->slice.len);
 
 	// Wait for all threads to complete the current simulation step and
 	// propagate their results, before synchronizing the global particle slice
@@ -365,6 +361,11 @@ thread_step(struct thread_state *state, unsigned step, long *us)
 
 	if (state->id != 0)
 		sync_tree_particles(state->particles, &state->slice);
+
+	if (state->id == 0) {
+		clock_gettime(CLOCK_MONOTONIC, &stop);
+		*us = time_diff(&start, &stop);
+	}
 
 	return 0;
 }
