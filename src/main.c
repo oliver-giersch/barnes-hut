@@ -156,7 +156,7 @@ main(int argc, char *argv[argc])
 				"\tsimulation in: %ld us\n",
 				step, build_us, step_us);
 		else
-			; // fprintf(stdout, "%u,%ld,%ld\n", step, build_us, step_us);
+			fprintf(stdout, "%u,%ld,%ld\n", step, build_us, step_us);
 
 		// Recalculate the radius for the next iteration step.
 		//
@@ -175,7 +175,7 @@ main(int argc, char *argv[argc])
 #ifdef RENDER
 		if (render_scene(particles, tls->states[0].radius))
 			goto exit;
-		usleep(500000);
+		usleep(100000);
 #endif // RENDER
 	}
 

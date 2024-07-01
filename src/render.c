@@ -9,8 +9,8 @@
 #include "barnes-hut/options.h"
 #include "barnes-hut/phys.h"
 
-static const unsigned width	 = 1024;
-static const unsigned height = 768;
+static const unsigned width	 = 1280;
+static const unsigned height = 960;
 
 static SDL_Window *window	  = NULL;
 static SDL_GLContext *context = NULL;
@@ -87,17 +87,19 @@ render_scene(const struct accel_particle particles[], float radius)
 static void
 render_axes(float radius)
 {
-	const float d = 2 * radius;
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glLoadIdentity();
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(-d, d, -d, d, 0.1, 1.75 * d);
+
+	const float d = 1.15 * radius;
+	glOrtho(-d, d, -d, d, 0.1, 10 * d);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 
-	gluLookAt(1.1 * radius, 1.1 * radius, 1.1 * radius, 0.0, 0.0, 0.0, 0.0, 1.0,
-		0.0);
+	gluLookAt(radius, radius, radius, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
 	glBegin(GL_LINES);
 
@@ -138,12 +140,12 @@ vec3_dist(const struct vec3 *v, const struct vec3 *u)
 static void
 render_point(const struct vec3 *v, float radius)
 {
-	// const struct vec3 cam = { 1.1 * radius, 1.1 * radius, 1.1 * radius };
-	//  const float dist	  = vec3_dist(v, &cam);
-	//  const float blue	  = 1 - 1 / (1 + (0.001 * dist));
+	const struct vec3 cam = { radius, radius, radius };
+	const float dist	  = vec3_dist(v, &cam);
+	const float blue	  = dist / (2 * radius);
 
-	glColor3f(0.0, 0.5, 1.0); // blue points, make dimmer with growing distance
-							  // from camera? (1 - (ln(1+0.0001*x)/ln(1+)))
+	glColor3f(0.0, 0.5, blue); // blue points, make dimmer with growing distance
+							   // from camera? (1 - (ln(1+0.0001*x)/ln(1+)))
 	// return (1 - 1 / (1 + k * x)) * 0.5
 
 	glVertex3f(v->x, v->y, v->z);
