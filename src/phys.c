@@ -61,7 +61,7 @@ randomize_particles(struct accel_particle particles[], float r)
 		const float ymax = sqrtf(sq(r) - sq(x));
 		const float y	 = randomf() * 2 * ymax - ymax;
 		const float zmax = sqrt(sq(r) - sq(x) - sq(y));
-		const float z	 = randomf() * 2 * zmax - zmax;
+		const float z	 = (!options.flat) ? randomf() * 2 * zmax - zmax : 0.0;
 
 		particles[p] = (struct accel_particle) {
 			.part = {
@@ -148,8 +148,8 @@ float
 particle_tree_simulate(const struct particle_tree *tree,
 	const struct particle_slice *slice)
 {
-	float max_dist	   = 0.0;
-	float dist_squared = 0.0;
+	float max_dist_sq = 0.0;
+	float dist_sq	  = 0.0;
 
 	for (size_t p = 0; p < slice->len; p++) {
 		struct vec3 force		  = zero_vec;
@@ -162,12 +162,12 @@ particle_tree_simulate(const struct particle_tree *tree,
 		// Apply the calculated velocity the particle's position.
 		vec3_addassign(&ap->part.pos, &ap->vel);
 
-		dist_squared = vec3_dist_sq(&zero_vec, &ap->part.pos);
-		if (dist_squared > max_dist)
-			max_dist = dist_squared;
+		dist_sq = vec3_dist_sq(&zero_vec, &ap->part.pos);
+		if (dist_sq > max_dist_sq)
+			max_dist_sq = dist_sq;
 	}
 
-	return sqrtf(max_dist);
+	return sqrtf(max_dist_sq);
 }
 
 static inline bool
@@ -276,6 +276,33 @@ octant_update_center(struct octant *oct)
 	vec3_divassign(&new_center, oct->center.mass);
 	oct->center.pos = new_center;
 	return new_center;
+}
+
+// TODO: should be slower than update_foce, but need to measure
+static struct vec3
+octant_calculate_force(const struct octant *oct, const struct particle *part)
+{
+	if (octant_is_leaf(oct)) {
+		if (!vec3_eql(&oct->center.pos, &part->pos))
+			return gforce(part, &oct->center);
+		else
+			return zero_vec;
+	}
+
+	const float radius = vec3_dist(&part->pos, &oct->center.pos);
+	if (oct->len / radius < options.theta)
+		return gforce(part, &oct->center);
+	else {
+		struct vec3 result = zero_vec;
+		for (unsigned c = 0; c < OTREE_CHILDREN; c++)
+			if (oct->children[c] != NULL) {
+				const struct vec3 child_result
+					= octant_calculate_force(oct->children[c], part);
+				vec3_addassign(&result, &child_result);
+			}
+
+		return result;
+	}
 }
 
 static void

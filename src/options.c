@@ -23,6 +23,7 @@ struct options options = {
 	.threads   = 1,
 	.seed	   = 0,
 	.optimize  = false,
+	.flat	   = false,
 	.verbose   = false,
 };
 
@@ -55,6 +56,7 @@ options_parse(int argc, char *argv[argc])
 		{ "seed", required_argument, NULL, 's' },
 		{ "theta", required_argument, NULL, THETA },
 		{ "optimize", no_argument, NULL, 'o' },
+		{ "flat", no_argument, NULL, 'f' },
 		{ "verbose", no_argument, NULL, 'v' },
 		{ 0, 0, 0, 0 },
 	};
@@ -108,6 +110,9 @@ options_parse(int argc, char *argv[argc])
 			break;
 		case 'o':
 			options.optimize = true;
+			break;
+		case 'f':
+			options.flat = true;
 			break;
 		case 'v':
 			options.verbose = true;

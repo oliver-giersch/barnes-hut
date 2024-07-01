@@ -16,11 +16,18 @@ extern struct options {
 	float max_mass;
 	// The initial radius of the galaxy.
 	float radius;
+	// The ???.
 	float theta;
+	// The total number of threads to utilize.
 	unsigned threads;
+	// The seed for RNG (0 means no fixed seed).
 	unsigned seed;
+	// The flag for enabling z-curve order sorting optimization.
 	bool optimize;
+	// The flag for enabling more verbose output to `stderr`.
 	bool verbose;
+	// The flag for forcing the entire galaxy into a flat x/y plane.
+	bool flat;
 } options;
 
 int options_parse(int argc, char *argv[argc]);
