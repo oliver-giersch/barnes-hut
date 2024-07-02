@@ -167,7 +167,7 @@ parse_arg_float(const char *name, const char *optarg, float *res)
 
 	char *end;
 	*res = strtof(optarg, &end);
-	if (end != NULL || *res == HUGE_VALF || *res == -HUGE_VALF) {
+	if (*end != '\0' || *res == HUGE_VALF || *res == -HUGE_VALF) {
 		fprintf(stderr, "Invalid %s arg: %s\n", name, strerror(errno));
 		return errno;
 	}

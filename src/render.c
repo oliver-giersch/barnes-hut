@@ -23,6 +23,7 @@ render_init(void)
 {
 	SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
 	SDL_SetHint(SDL_HINT_VIDEODRIVER, "wayland");
+	SDL_SetHint(SDL_HINT_VIDEO_WAYLAND_PREFER_LIBDECOR, "1");
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 		goto error;
 
