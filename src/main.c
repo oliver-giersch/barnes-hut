@@ -44,18 +44,19 @@ struct thread_state {
 	float radius;
 } aligned(64);
 
+// The global memory arena for octant allocation.
+struct arena arena;
+
 // The global thread error flag.
 static atomic_int thread_errno = 0;
 // The global thread synchronization barrier.
 static pthread_barrier_t barrier;
 // The globally shared and synchronized region of all simulated particles.
 static struct accel_particle *particles;
-// The memory arena for octant allocation.
-static struct arena arena;
 // The globally shared and synchronized tree of particles.
 //
 // Access to the tree must be synchronized using `barrier`.
-static struct particle_tree tree;
+static struct particle_tree tree = { .root = INVALID_ARENA_ITEM };
 // The TLS holding the state of all threads.
 static struct threads {
 	unsigned len;
@@ -104,7 +105,7 @@ main(int argc, char *argv[argc])
 
 	if (unlikely((res = init_barrier())))
 		return ENOMEM;
-	if (unlikely((res = arena_init(&arena, arena_size))))
+	if (unlikely((res = arena_init(&arena, arena_size, sizeof(struct octant)))))
 		return res;
 	if (unlikely((particles = init_particles()) == NULL))
 		return ENOMEM;
@@ -204,15 +205,17 @@ exit:
 }
 
 int
-arena_init(struct arena *arena, size_t size)
+arena_init(struct arena *arena, size_t size, size_t item_size)
 {
 	arena->memory = mmap(NULL, size, PROT_READ | PROT_WRITE,
 		MAP_PRIVATE | MAP_ANON, -1, 0);
 	if (unlikely(arena->memory == MAP_FAILED))
 		return errno;
 
-	arena->curr = arena->memory;
-	arena->end	= (void *)((uintptr_t)arena->memory + size);
+	arena->size		 = size;
+	arena->item_size = item_size;
+	arena->curr		 = 0;
+	arena->last		 = (size / item_size) + 1;
 
 	return 0;
 }
@@ -220,8 +223,7 @@ arena_init(struct arena *arena, size_t size)
 void
 arena_deinit(struct arena *arena)
 {
-	const size_t size = (uintptr_t)arena->end - (uintptr_t)arena->curr;
-	if (munmap(arena->memory, size))
+	if (munmap(arena->memory, arena->size))
 		fprintf(stderr, "Failed to unmap arena: %s\n", strerror(errno));
 }
 
@@ -380,7 +382,7 @@ build_step(unsigned step, float radius, long *us)
 	if (options.optimize && step % 10 == 0)
 		sort_particles(particles);
 
-	res = particle_tree_build(&tree, particles, radius, &arena);
+	res = particle_tree_build(&tree, particles, radius);
 	if (unlikely(res)) {
 		atomic_store_explicit(&thread_errno, res, memory_order_release);
 		pthread_barrier_wait(&barrier);

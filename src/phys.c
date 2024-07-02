@@ -81,36 +81,21 @@ sort_particles(struct accel_particle particles[])
 		(cmp_fn)&sort_by_z_curve);
 }
 
-#define OTREE_CHILDREN 8
-struct octant {
-	// The octant's center point mass (cumulative over all contained bodies).
-	struct particle center;
-	// The octant's dimensions (lower-left corner and width).
-	float x, y, z, len;
-	// The number of all bodies contained within the octant.
-	unsigned bodies;
-	// The octant's sub-octants (0-3 are (-z)-coords, 4-7 are (+z)-coords).
-	//
-	// |---|---|
-	// | 2 | 3 |
-	// |---|---|
-	// | 0 | 1 |
-	// |---|---|
-	struct octant *children[OTREE_CHILDREN];
+struct octant_malloc_return_t {
+	arena_item_t item;
+	struct octant *octant;
 };
 
 // Returns `true` if the octant represents a leaf in a particle tree.
 static inline bool octant_is_leaf(const struct octant *oct);
 // Arena-allocates and initializes a new octant for the given center and
 // dimensions.
-static inline struct octant *octant_malloc(struct arena *,
+static inline struct octant_malloc_return_t octant_malloc(
 	struct particle center, float x, float y, float z, float len);
 // Inserts the given particle into one of the octant's children.
-static int octant_insert(struct octant *oct, const struct particle *part,
-	struct arena *arena);
+static int octant_insert(struct octant *oct, const struct particle *part);
 // Inserts the particle into the given child octant.
-static int octant_insert_child(struct octant *oct, const struct particle *part,
-	struct arena *arena);
+static int octant_insert_child(struct octant *oct, const struct particle *part);
 // Recursively updates the center point of the given octant.
 static struct vec3 octant_update_center(struct octant *oct);
 // Recursively updates and applies gravitational force to all particles
@@ -120,27 +105,27 @@ static void octant_update_force(const struct octant *oct,
 
 int
 particle_tree_build(struct particle_tree *tree,
-	const struct accel_particle particles[], float radius, struct arena *arena)
+	const struct accel_particle particles[], float radius)
 {
 	int res;
 
-	if (likely(tree->root != NULL))
-		arena_reset(arena);
+	if (likely(tree->root != INVALID_ARENA_ITEM))
+		arena_reset(&arena);
 
 	// Initialize the root octant covering the entire galaxy.
-	tree->root = octant_malloc(arena, particles[0].part, -1 * radius,
-		-1 * radius, -1 * radius, 2 * radius);
-	if (unlikely(tree->root == NULL))
+	struct octant_malloc_return_t root = octant_malloc(particles[0].part,
+		-1 * radius, -1 * radius, -1 * radius, 2 * radius);
+	if ((tree->root = root.item) == INVALID_ARENA_ITEM)
 		return ENOMEM;
 
 	// Insert each remaining particle into the tree.
 	for (size_t i = 1; i < options.particles; i++) {
 		const struct particle *part = &particles[i].part;
-		if ((res = unlikely(octant_insert(tree->root, part, arena))))
+		if ((res = unlikely(octant_insert(root.octant, part))))
 			return res;
 	}
 
-	octant_update_center(tree->root);
+	octant_update_center(root.octant);
 	return 0;
 }
 
@@ -148,13 +133,14 @@ float
 particle_tree_simulate(const struct particle_tree *tree,
 	const struct particle_slice *slice)
 {
-	float max_dist_sq = 0.0;
-	float dist_sq	  = 0.0;
+	struct octant *root = arena_get(&arena, tree->root);
+	float max_dist_sq	= 0.0;
+	float dist_sq		= 0.0;
 
 	for (size_t p = 0; p < slice->len; p++) {
 		struct vec3 force		  = zero_vec;
 		struct accel_particle *ap = &slice->from[p];
-		octant_update_force(tree->root, &ap->part, &force);
+		octant_update_force(root, &ap->part, &force);
 
 		// Apply the calculated force to the particle's velocity.
 		vec3_divassign(&force, ap->part.mass);
@@ -176,13 +162,14 @@ octant_is_leaf(const struct octant *oct)
 	return oct->bodies == 1;
 }
 
-static inline struct octant *
-octant_malloc(struct arena *arena, struct particle center, float x, float y,
-	float z, float len)
+static inline struct octant_malloc_return_t
+octant_malloc(struct particle center, float x, float y, float z, float len)
 {
-	struct octant *oct = arena_malloc(arena, sizeof(struct octant));
-	if (unlikely(oct == NULL))
-		return NULL;
+	const arena_item_t item = arena_malloc(&arena, sizeof(struct octant));
+	if (unlikely(item == INVALID_ARENA_ITEM))
+		return (struct octant_malloc_return_t) { INVALID_ARENA_ITEM, NULL };
+
+	struct octant *oct = arena_get(&arena, item);
 
 	*oct = (struct octant) {
 		.center	  = center,
@@ -191,15 +178,14 @@ octant_malloc(struct arena *arena, struct particle center, float x, float y,
 		.z		  = z,
 		.len	  = len,
 		.bodies	  = 1,
-		.children = { NULL },
+		.children = { INVALID_ARENA_ITEM },
 	};
 
-	return oct;
+	return (struct octant_malloc_return_t) { item, oct };
 }
 
 static int
-octant_insert(struct octant *oct, const struct particle *part,
-	struct arena *arena)
+octant_insert(struct octant *oct, const struct particle *part)
 {
 	int res;
 
@@ -211,20 +197,19 @@ octant_insert(struct octant *oct, const struct particle *part,
 			return 0;
 		}
 
-		if ((res = octant_insert_child(oct, &oct->center, arena)))
+		if ((res = octant_insert_child(oct, &oct->center)))
 			return res;
 	}
 
 	oct->center.mass += part->mass;
-	if ((res = octant_insert_child(oct, part, arena)))
+	if ((res = octant_insert_child(oct, part)))
 		return res;
 
 	return 0;
 }
 
 static int
-octant_insert_child(struct octant *oct, const struct particle *part,
-	struct arena *arena)
+octant_insert_child(struct octant *oct, const struct particle *part)
 {
 	const float len = oct->len / 2.0;
 	float x			= oct->x;
@@ -244,12 +229,15 @@ octant_insert_child(struct octant *oct, const struct particle *part,
 	if (part->pos.z > z + len)
 		c += (OTREE_CHILDREN / 2), z += len;
 
-	if (oct->children[c] != NULL)
-		return octant_insert(oct->children[c], part, arena);
+	if (oct->children[c] != INVALID_ARENA_ITEM) {
+		struct octant *child = arena_get(&arena, oct->children[c]);
+		return octant_insert(child, part);
+	}
 
-	oct->children[c] = octant_malloc(arena, *part, x, y, z, len);
-	if (unlikely(oct->children[c] == NULL))
+	struct octant_malloc_return_t child = octant_malloc(*part, x, y, z, len);
+	if (unlikely(child.item == INVALID_ARENA_ITEM))
 		return ENOMEM;
+	oct->children[c] = child.item;
 
 	return 0;
 }
@@ -266,9 +254,9 @@ octant_update_center(struct octant *oct)
 
 	new_center = zero_vec;
 	for (unsigned c = 0; c < OTREE_CHILDREN; c++) {
-		if (oct->children[c] != NULL) {
-			const struct vec3 child_center
-				= octant_update_center(oct->children[c]);
+		if (oct->children[c] != INVALID_ARENA_ITEM) {
+			struct octant *child = arena_get(&arena, oct->children[c]);
+			const struct vec3 child_center = octant_update_center(child);
 			vec3_addassign(&new_center, &child_center);
 		}
 	}
@@ -276,33 +264,6 @@ octant_update_center(struct octant *oct)
 	vec3_divassign(&new_center, oct->center.mass);
 	oct->center.pos = new_center;
 	return new_center;
-}
-
-// TODO: should be slower than update_foce, but need to measure
-static struct vec3
-octant_calculate_force(const struct octant *oct, const struct particle *part)
-{
-	if (octant_is_leaf(oct)) {
-		if (!vec3_eql(&oct->center.pos, &part->pos))
-			return gforce(part, &oct->center);
-		else
-			return zero_vec;
-	}
-
-	const float radius = vec3_dist(&part->pos, &oct->center.pos);
-	if (oct->len / radius < options.theta)
-		return gforce(part, &oct->center);
-	else {
-		struct vec3 result = zero_vec;
-		for (unsigned c = 0; c < OTREE_CHILDREN; c++)
-			if (oct->children[c] != NULL) {
-				const struct vec3 child_result
-					= octant_calculate_force(oct->children[c], part);
-				vec3_addassign(&result, &child_result);
-			}
-
-		return result;
-	}
 }
 
 static void
@@ -324,8 +285,11 @@ octant_update_force(const struct octant *oct, const struct particle *part,
 		vec3_addassign(force, &gf);
 	} else {
 		for (unsigned c = 0; c < OTREE_CHILDREN; c++)
-			if (oct->children[c] != NULL)
-				octant_update_force(oct->children[c], part, force);
+			if (oct->children[c] != INVALID_ARENA_ITEM) {
+				const struct octant *child
+					= arena_get(&arena, oct->children[c]);
+				octant_update_force(child, part, force);
+			}
 	}
 }
 
