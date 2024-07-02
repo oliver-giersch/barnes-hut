@@ -87,8 +87,6 @@ step_continue(unsigned step)
 	return options.steps == 0 || step < options.steps;
 }
 
-#include <unistd.h>
-
 int
 main(int argc, char *argv[argc])
 {
@@ -176,7 +174,6 @@ main(int argc, char *argv[argc])
 #ifdef RENDER
 		if (render_scene(particles, max_radius))
 			goto exit;
-			// usleep(100000);
 #endif // RENDER
 	}
 
