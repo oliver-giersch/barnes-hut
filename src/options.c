@@ -64,7 +64,7 @@ options_parse(int argc, char *argv[argc])
 	int res = 0;
 	while (true) {
 		const int opt
-			= getopt_long(argc, argv, "t:n:m:r:p:s:hov", long_opts, NULL);
+			= getopt_long(argc, argv, "t:n:m:r:p:s:hofv", long_opts, NULL);
 
 		unsigned long long ull;
 		float f;

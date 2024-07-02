@@ -22,6 +22,7 @@ int
 render_init(void)
 {
 	SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
+	SDL_SetHint(SDL_HINT_VIDEODRIVER, "wayland");
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 		goto error;
 
@@ -93,8 +94,7 @@ render_axes(float radius)
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 
-	const float d = 1.15 * radius;
-	glOrtho(-d, d, -d, d, 0.1, 10 * d);
+	glOrtho(-radius, radius, -radius, radius, 0.1, 3.0 * radius);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
@@ -119,7 +119,7 @@ render_axes(float radius)
 	glEnd();
 }
 
-static inline float
+/*static inline float
 sq(float x)
 {
 	return x * x;
@@ -135,18 +135,37 @@ static inline float
 vec3_dist(const struct vec3 *v, const struct vec3 *u)
 {
 	return sqrtf(vec3_dist_sq(v, u));
-}
+}*/
+
+// looks cool
+/*static void
+render_point(const struct vec3 *v, float radius)
+{
+	// static const float sqrt_twelve = 3.464101615;
+
+	// const struct vec3 cam = { radius, radius, radius };
+	// const float dist	  = vec3_dist(v, &cam);
+	const struct vec3 zz = { 0.0, 0.0, 0.0 };
+	const float dist	 = vec3_dist(v, &zz);
+	const float blue	 = (dist / radius);
+	// extern long int random(void);
+	// const float red	  = (float)random() / (float)RAND_MAX;
+	// const float green = (float)random() / (float)RAND_MAX;
+	// blue			  = (float)random() / (float)RAND_MAX;
+	// fprintf(stderr, "%f,%f,%f\n", red, green, blue);
+	glColor3f(0.0, blue, blue);
+
+	glVertex3f(v->x, v->y, v->z);
+}*/
 
 static void
 render_point(const struct vec3 *v, float radius)
 {
-	const struct vec3 cam = { radius, radius, radius };
-	const float dist	  = vec3_dist(v, &cam);
-	const float blue	  = dist / (2 * radius);
+	const float d	  = 2 * radius;
+	const float red	  = (v->x + radius) / d;
+	const float green = (v->y + radius) / d;
+	const float blue  = (v->z + radius) / d;
 
-	glColor3f(0.0, 0.5, blue); // blue points, make dimmer with growing distance
-							   // from camera? (1 - (ln(1+0.0001*x)/ln(1+)))
-	// return (1 - 1 / (1 + k * x)) * 0.5
-
+	glColor3f(red, green, blue);
 	glVertex3f(v->x, v->y, v->z);
 }

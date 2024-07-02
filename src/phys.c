@@ -172,14 +172,16 @@ octant_malloc(struct particle center, float x, float y, float z, float len)
 	struct octant *oct = arena_get(&arena, item);
 
 	*oct = (struct octant) {
-		.center	  = center,
-		.x		  = x,
-		.y		  = y,
-		.z		  = z,
-		.len	  = len,
-		.bodies	  = 1,
-		.children = { INVALID_ARENA_ITEM },
+		.center = center,
+		.x		= x,
+		.y		= y,
+		.z		= z,
+		.len	= len,
+		.bodies = 1,
 	};
+
+	for (unsigned c = 0; c < OTREE_CHILDREN; c++)
+		oct->children[c] = INVALID_ARENA_ITEM;
 
 	return (struct octant_malloc_return_t) { item, oct };
 }

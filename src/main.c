@@ -174,13 +174,14 @@ main(int argc, char *argv[argc])
 			tls->states[t].radius = max_radius;
 
 #ifdef RENDER
-		if (render_scene(particles, tls->states[0].radius))
+		if (render_scene(particles, max_radius))
 			goto exit;
-		usleep(100000);
+			// usleep(100000);
 #endif // RENDER
 	}
 
 exit:
+	verbose_printf("joining threads %u ...\n", t);
 	for (unsigned i = 0; i < t; i++) {
 		void *thread_res;
 		pthread_join(threads[i], &thread_res);
