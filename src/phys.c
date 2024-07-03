@@ -389,7 +389,7 @@ static struct vec3
 gforce(const struct particle *p0, const struct particle *p1)
 {
 	static const float G		= 6.6726e-11;
-	static const float min_dist = 0.5;
+	static const float min_dist = 1.0;
 
 	if (unlikely(vec3_eql(&p0->pos, &p1->pos)))
 		return zero_vec;
@@ -398,12 +398,12 @@ gforce(const struct particle *p0, const struct particle *p1)
 	if (dist < min_dist)
 		dist = min_dist;
 
-	const float rp3 = dist * dist * dist;
-	const float gm	= G * p0->mass * p1->mass;
+	const float qd = dist * dist * dist;
+	const float gm = G * p0->mass * p1->mass;
 
 	struct vec3 result = p1->pos;
 	vec3_subassign(&result, &p0->pos);
-	vec3_mulassign(&result, gm / rp3);
+	vec3_mulassign(&result, gm / qd);
 
 	return result;
 }
