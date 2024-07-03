@@ -6,7 +6,7 @@
 
 #include "barnes-hut/common.h"
 
-#define INVALID_ARENA_ITEM (arena_item_t) UINT32_MAX
+#define ARENA_NULL (arena_item_t) UINT32_MAX
 
 typedef uint32_t arena_item_t;
 
@@ -31,7 +31,7 @@ arena_malloc(struct arena *arena, size_t size)
 {
 	arena_item_t item = arena->curr;
 	if (unlikely(item == arena->last))
-		return INVALID_ARENA_ITEM;
+		return ARENA_NULL;
 
 	arena->curr += 1;
 	return item;

@@ -56,7 +56,7 @@ static struct accel_particle *particles;
 // The globally shared and synchronized tree of particles.
 //
 // Access to the tree must be synchronized using `barrier`.
-static struct particle_tree tree = { .root = INVALID_ARENA_ITEM };
+static struct particle_tree tree = { .root = ARENA_NULL };
 // The TLS holding the state of all threads.
 static struct threads {
 	unsigned len;

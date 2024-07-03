@@ -40,17 +40,25 @@ randomf(void)
 	return (float)random() / (float)RAND_MAX;
 }
 
+// Returns the morton number for the given x, y, z coordinates.
 static inline uint64_t morton_number(unsigned x, unsigned y, unsigned z);
 static inline int sort_by_z_curve(const struct accel_particle *p0,
 	const struct accel_particle *p1);
 static struct vec3 gforce(const struct particle *p0, const struct particle *p1);
 
+// Adds vector `u` to vector `v`.
 static inline void vec3_addassign(struct vec3 *v, const struct vec3 *u);
+// Subtracts vector `u` from vector `v`.
 static inline void vec3_subassign(struct vec3 *v, const struct vec3 *u);
+// Multiplies vector `v` with scalar `t`.
 static inline void vec3_mulassign(struct vec3 *v, float t);
+// Divides vector `v` by scalar `t`.
 static inline void vec3_divassign(struct vec3 *v, float t);
+// Returns `true` if vectors `v` and `u` are equal.
 static inline bool vec3_eql(const struct vec3 *v, const struct vec3 *u);
+// Returns the squared distance between vectors `v` and `u`.
 static inline float vec3_dist_sq(const struct vec3 *v, const struct vec3 *u);
+// Returns the distance between vectors `v` and `u`.
 static inline float vec3_dist(const struct vec3 *v, const struct vec3 *u);
 
 void
@@ -109,13 +117,13 @@ particle_tree_build(struct particle_tree *tree,
 {
 	int res;
 
-	if (likely(tree->root != INVALID_ARENA_ITEM))
+	if (likely(tree->root != ARENA_NULL))
 		arena_reset(&arena);
 
 	// Initialize the root octant covering the entire galaxy.
 	struct octant_malloc_return_t root = octant_malloc(particles[0].part,
 		-1 * radius, -1 * radius, -1 * radius, 2 * radius);
-	if ((tree->root = root.item) == INVALID_ARENA_ITEM)
+	if ((tree->root = root.item) == ARENA_NULL)
 		return ENOMEM;
 
 	// Insert each remaining particle into the tree.
@@ -169,8 +177,8 @@ static inline struct octant_malloc_return_t
 octant_malloc(struct particle center, float x, float y, float z, float len)
 {
 	const arena_item_t item = arena_malloc(&arena, sizeof(struct octant));
-	if (unlikely(item == INVALID_ARENA_ITEM))
-		return (struct octant_malloc_return_t) { INVALID_ARENA_ITEM, NULL };
+	if (unlikely(item == ARENA_NULL))
+		return (struct octant_malloc_return_t) { ARENA_NULL, NULL };
 
 	struct octant *oct = arena_get(&arena, item);
 
@@ -184,7 +192,7 @@ octant_malloc(struct particle center, float x, float y, float z, float len)
 	};
 
 	for (unsigned c = 0; c < OTREE_CHILDREN; c++)
-		oct->children[c] = INVALID_ARENA_ITEM;
+		oct->children[c] = ARENA_NULL;
 
 	return (struct octant_malloc_return_t) { item, oct };
 }
@@ -216,35 +224,37 @@ octant_insert(struct octant *oct, const struct particle *part)
 static int
 octant_insert_child(struct octant *oct, const struct particle *part)
 {
-	const float len = oct->len / 2.0;
-	float x			= oct->x;
-	float y			= oct->y;
-	float z			= oct->z;
-	unsigned c		= 0;
+	const float sub_len = oct->len / 2.0;
+
+	float x	   = oct->x;
+	float y	   = oct->y;
+	float z	   = oct->z;
+	unsigned c = 0;
 
 	// Determine, if pos lies in left (0/2) or right (1/3) octant.
-	if (part->pos.x > x + len) {
+	if (part->pos.x > x + sub_len) {
 		c = 1;
-		x += len;
+		x += sub_len;
 	}
 	// Determine, if pos lies in bottom (0/1) or top (2/3) octant.
-	if (part->pos.y > y + len) {
+	if (part->pos.y > y + sub_len) {
 		c += 2;
-		y += len;
+		y += sub_len;
 	}
 	// Determine, if pos lies in front or back octant.
-	if (part->pos.z > z + len) {
+	if (part->pos.z > z + sub_len) {
 		c += (OTREE_CHILDREN / 2);
-		z += len;
+		z += sub_len;
 	}
 
-	if (oct->children[c] != INVALID_ARENA_ITEM) {
+	if (oct->children[c] != ARENA_NULL) {
 		struct octant *child = arena_get(&arena, oct->children[c]);
 		return octant_insert(child, part);
 	}
 
-	struct octant_malloc_return_t child = octant_malloc(*part, x, y, z, len);
-	if (unlikely(child.item == INVALID_ARENA_ITEM))
+	struct octant_malloc_return_t child
+		= octant_malloc(*part, x, y, z, sub_len);
+	if (unlikely(child.item == ARENA_NULL))
 		return ENOMEM;
 	oct->children[c] = child.item;
 
@@ -263,7 +273,7 @@ octant_update_center(struct octant *oct)
 
 	new_center = zero_vec;
 	for (unsigned c = 0; c < OTREE_CHILDREN; c++) {
-		if (oct->children[c] != INVALID_ARENA_ITEM) {
+		if (oct->children[c] != ARENA_NULL) {
 			struct octant *child = arena_get(&arena, oct->children[c]);
 			const struct vec3 child_center = octant_update_center(child);
 			vec3_addassign(&new_center, &child_center);
@@ -295,7 +305,7 @@ octant_update_force(const struct octant *oct, const struct particle *part,
 		vec3_addassign(force, &gf);
 	} else {
 		for (unsigned c = 0; c < OTREE_CHILDREN; c++)
-			if (oct->children[c] != INVALID_ARENA_ITEM) {
+			if (oct->children[c] != ARENA_NULL) {
 				const struct octant *child
 					= arena_get(&arena, oct->children[c]);
 				octant_update_force(child, part, force);
@@ -389,7 +399,7 @@ static struct vec3
 gforce(const struct particle *p0, const struct particle *p1)
 {
 	static const float G		= 6.6726e-11;
-	static const float min_dist = 1.0;
+	static const float min_dist = 2.0;
 
 	if (unlikely(vec3_eql(&p0->pos, &p1->pos)))
 		return zero_vec;
