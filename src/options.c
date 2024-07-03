@@ -22,6 +22,7 @@ struct options options = {
 	.theta	   = 0.3,
 	.threads   = 1,
 	.seed	   = 0,
+	.delay	   = 0,
 	.optimize  = false,
 	.flat	   = false,
 	.verbose   = false,
@@ -41,7 +42,8 @@ static const char *argsstrs[] = {
 	['m']	= "mass",
 	['r']	= "radius",
 	['p']	= "threads",
-	['s']	= "seeds",
+	['s']	= "seed",
+	['d']	= "delay",
 	[THETA] = "theta",
 };
 
@@ -53,8 +55,10 @@ options_parse(int argc, char *argv[argc])
 		{ "num", required_argument, NULL, 'n' },
 		{ "mass", required_argument, NULL, 'm' },
 		{ "radius", required_argument, NULL, 'r' },
-		{ "seed", required_argument, NULL, 's' },
 		{ "theta", required_argument, NULL, THETA },
+		{ "threads", required_argument, NULL, 'p' },
+		{ "seed", required_argument, NULL, 's' },
+		{ "delay", required_argument, NULL, 'd' },
 		{ "optimize", no_argument, NULL, 'o' },
 		{ "flat", no_argument, NULL, 'f' },
 		{ "verbose", no_argument, NULL, 'v' },
@@ -64,7 +68,7 @@ options_parse(int argc, char *argv[argc])
 	int res = 0;
 	while (true) {
 		const int opt
-			= getopt_long(argc, argv, "t:n:m:r:p:s:hofv", long_opts, NULL);
+			= getopt_long(argc, argv, "t:n:m:r:p:s:d:hofv", long_opts, NULL);
 
 		unsigned long long ull;
 		float f;
@@ -102,6 +106,11 @@ options_parse(int argc, char *argv[argc])
 			if ((res = parse_arg_ull(argsstrs[opt], optarg, &ull)))
 				goto out;
 			options.seed = (unsigned)ull;
+			break;
+		case 'd':
+			if ((res = parse_arg_ull(argsstrs[opt], optarg, &ull)))
+				goto out;
+			options.delay = (unsigned)ull;
 			break;
 		case THETA:
 			if ((res = parse_arg_float(argsstrs[opt], optarg, &f)))
@@ -194,12 +203,11 @@ print_usage(const char *exe)
 		"-r [RADIUS], --radius=[RADIUS]     The initial radius of the universe.\n"
 		"-p [THREADS], --threads=[THREADS]  The number of threads to use for the simulation.\n"
 		"-s [SEED], --seed=[SEED]           The seed for random number generation (0..UINT_MAX).\n"
+		"-d [DELAY], --delay=[DELAY]        The delay in ms after each simulation step.\n"
 		"-o, --optimize                     The flag for enabling memory hierachy optimizations.\n"
+		"-f, --flat                         The flag for enabling generation of a flat galaxy in the x/y plane.\n"
 		"-v, --verbose                      The flag for enabling verbose output.\n"
 		"-h, --help                         Print this help and exit.\n"
-#ifdef DISPLAY
-		"-d [DIM], --dimension=[DIM]\n"
-#endif // DISPLAY
 		"--theta\n",
 		// clang-format on
 		exe);

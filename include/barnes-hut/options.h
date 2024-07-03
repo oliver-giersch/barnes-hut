@@ -22,6 +22,8 @@ extern struct options {
 	unsigned threads;
 	// The seed for RNG (0 means no fixed seed).
 	unsigned seed;
+	// The delay in ms afer each simulation step.
+	unsigned delay;
 	// The flag for enabling z-curve order sorting optimization.
 	bool optimize;
 	// The flag for enabling more verbose output to `stderr`.

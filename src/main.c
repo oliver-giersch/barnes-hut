@@ -75,6 +75,7 @@ static int thread_step(struct thread_state *state, unsigned step, long *us);
 static int build_step(unsigned step, float radius, long *us);
 static void sync_tree_particles(struct accel_particle tree_particles[],
 	const struct particle_slice *slice);
+static void msleep(unsigned ms);
 
 static const size_t kib		   = (size_t)1 << 10;
 static const size_t mib		   = kib << 10;
@@ -175,6 +176,8 @@ main(int argc, char *argv[argc])
 		if (render_scene(particles, max_radius))
 			goto exit;
 #endif // RENDER
+		if (options.delay)
+			msleep(options.delay);
 	}
 
 exit:
@@ -228,8 +231,8 @@ arena_deinit(struct arena *arena)
 static inline long
 time_diff(const struct timespec *start, const struct timespec *stop)
 {
-	return (stop->tv_sec - start->tv_sec) * 1e6
-		+ ((stop->tv_nsec - start->tv_nsec) / 1e3);
+	return (stop->tv_sec - start->tv_sec) * (long)1e6
+		+ ((stop->tv_nsec - start->tv_nsec) / (long)1e3);
 }
 
 static int
@@ -411,4 +414,18 @@ sync_tree_particles(struct accel_particle tree_particles[],
 	const size_t len   = options.particles - after;
 	memcpy(&tree_particles[after], &particles[after],
 		sizeof(struct accel_particle) * len);
+}
+
+static void
+msleep(unsigned ms)
+{
+	static const unsigned k = (unsigned)1e3;
+	static const unsigned m = (unsigned)1e6;
+
+	int res;
+
+	struct timespec ts = { .tv_sec = ms / k, .tv_nsec = (ms % k) * m };
+	do {
+		res = nanosleep(&ts, &ts);
+	} while (res && errno == EINTR);
 }
