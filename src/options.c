@@ -59,6 +59,7 @@ options_parse(int argc, char *argv[argc])
 		{ "mass", required_argument, NULL, 'm' },
 		{ "radius", required_argument, NULL, 'r' },
 		{ "theta", required_argument, NULL, THETA },
+		{ "dt", required_argument, NULL, DT },
 		{ "threads", required_argument, NULL, 'p' },
 		{ "seed", required_argument, NULL, 's' },
 		{ "delay", required_argument, NULL, 'd' },

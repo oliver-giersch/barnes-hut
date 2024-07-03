@@ -29,7 +29,7 @@ sq(float x)
 static inline bool
 feql(float a, float b)
 {
-	static const float eps = 0.0001;
+	static const float eps = 0.001;
 	return fabsf(a - b) <= eps;
 }
 
@@ -143,7 +143,8 @@ particle_tree_simulate(const struct particle_tree *tree,
 		octant_update_force(root, &ap->part, &force);
 
 		// Apply the calculated force to the particle's velocity.
-		vec3_divassign(&force, ap->part.mass * options.dt);
+		// vec3_divassign(&force, ap->part.mass * 1.0 / options.dt);
+		vec3_mulassign(&force, options.dt / ap->part.mass);
 		vec3_addassign(&ap->vel, &force);
 		// Apply the calculated velocity the particle's position.
 		struct vec3 vel_dampened = ap->vel;
@@ -194,8 +195,8 @@ octant_insert(struct octant *oct, const struct particle *part)
 	int res;
 
 	if (octant_is_leaf(oct)) {
-		const bool absorb
-			= vec3_eql(&oct->center.pos, &part->pos) || feql(oct->len / 2, 0.0);
+		const bool absorb = vec3_eql(&oct->center.pos, &part->pos)
+			|| feql(oct->len / 2.0, 0.0);
 		if (absorb) {
 			oct->center.mass += part->mass;
 			return 0;
@@ -222,14 +223,20 @@ octant_insert_child(struct octant *oct, const struct particle *part)
 	unsigned c		= 0;
 
 	// Determine, if pos lies in left (0/2) or right (1/3) octant.
-	if (part->pos.x > x + len)
-		c = 1, x += len;
+	if (part->pos.x > x + len) {
+		c = 1;
+		x += len;
+	}
 	// Determine, if pos lies in bottom (0/1) or top (2/3) octant.
-	if (part->pos.y > y + len)
-		c += 2, y += len;
+	if (part->pos.y > y + len) {
+		c += 2;
+		y += len;
+	}
 	// Determine, if pos lies in front or back octant.
-	if (part->pos.z > z + len)
-		c += (OTREE_CHILDREN / 2), z += len;
+	if (part->pos.z > z + len) {
+		c += (OTREE_CHILDREN / 2);
+		z += len;
+	}
 
 	if (oct->children[c] != INVALID_ARENA_ITEM) {
 		struct octant *child = arena_get(&arena, oct->children[c]);
@@ -382,7 +389,7 @@ static struct vec3
 gforce(const struct particle *p0, const struct particle *p1)
 {
 	static const float G		= 6.6726e-11;
-	static const float min_dist = 4.0;
+	static const float min_dist = 0.5;
 
 	if (unlikely(vec3_eql(&p0->pos, &p1->pos)))
 		return zero_vec;
