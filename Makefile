@@ -11,7 +11,6 @@ SRC := src/main.c src/options.c src/phys.c
 INC := -I./include
 LIB := -lpthread -lm
 
-# adjust SRC based on XWIN before!
 ifeq ($(RENDER),1)
 	CFLAGS += -DRENDER
 	SRC    += src/render.c
@@ -33,7 +32,7 @@ endif
 all: $(EXE)
 
 $(EXE): $(OBJ) Makefile
-	$(LD) $(LDFLAGS) $(LIB) $(OBJ) -o $@
+	$(LD) $(LDFLAGS) $(OBJ) $(LIB) -o $@
 
 $(OBJ): %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@ $(INC)

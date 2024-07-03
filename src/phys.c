@@ -143,10 +143,12 @@ particle_tree_simulate(const struct particle_tree *tree,
 		octant_update_force(root, &ap->part, &force);
 
 		// Apply the calculated force to the particle's velocity.
-		vec3_divassign(&force, ap->part.mass);
+		vec3_divassign(&force, ap->part.mass * options.dt);
 		vec3_addassign(&ap->vel, &force);
 		// Apply the calculated velocity the particle's position.
-		vec3_addassign(&ap->part.pos, &ap->vel);
+		struct vec3 vel_dampened = ap->vel;
+		vec3_mulassign(&vel_dampened, options.dt);
+		vec3_addassign(&ap->part.pos, &vel_dampened);
 
 		dist_sq = vec3_dist_sq(&zero_vec, &ap->part.pos);
 		if (dist_sq > max_dist_sq)
@@ -217,12 +219,10 @@ octant_insert_child(struct octant *oct, const struct particle *part)
 	float x			= oct->x;
 	float y			= oct->y;
 	float z			= oct->z;
-	unsigned c;
+	unsigned c		= 0;
 
 	// Determine, if pos lies in left (0/2) or right (1/3) octant.
-	if (part->pos.x <= x + len)
-		c = 0;
-	else
+	if (part->pos.x > x + len)
 		c = 1, x += len;
 	// Determine, if pos lies in bottom (0/1) or top (2/3) octant.
 	if (part->pos.y > y + len)
@@ -263,8 +263,9 @@ octant_update_center(struct octant *oct)
 		}
 	}
 
-	vec3_divassign(&new_center, oct->center.mass);
 	oct->center.pos = new_center;
+	vec3_divassign(&oct->center.pos, oct->center.mass);
+
 	return new_center;
 }
 
@@ -381,7 +382,7 @@ static struct vec3
 gforce(const struct particle *p0, const struct particle *p1)
 {
 	static const float G		= 6.6726e-11;
-	static const float min_dist = 2.0;
+	static const float min_dist = 4.0;
 
 	if (unlikely(vec3_eql(&p0->pos, &p1->pos)))
 		return zero_vec;

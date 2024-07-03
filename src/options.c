@@ -20,6 +20,7 @@ struct options options = {
 	.max_mass  = 1e12,
 	.radius	   = 250.0,
 	.theta	   = 0.3,
+	.dt		   = 0.01,
 	.threads   = 1,
 	.seed	   = 0,
 	.delay	   = 0,
@@ -35,6 +36,7 @@ static inline int parse_arg_float(const char *name, const char *optarg,
 static int print_usage(const char *exe);
 
 #define THETA 1000
+#define DT 1001
 
 static const char *argsstrs[] = {
 	['t']	= "steps",
@@ -45,6 +47,7 @@ static const char *argsstrs[] = {
 	['s']	= "seed",
 	['d']	= "delay",
 	[THETA] = "theta",
+	[DT]	= "dt",
 };
 
 int
@@ -116,6 +119,11 @@ options_parse(int argc, char *argv[argc])
 			if ((res = parse_arg_float(argsstrs[opt], optarg, &f)))
 				goto out;
 			options.theta = f;
+			break;
+		case DT:
+			if ((res = parse_arg_float(argsstrs[opt], optarg, &f)))
+				goto out;
+			options.dt = f;
 			break;
 		case 'o':
 			options.optimize = true;
@@ -208,7 +216,8 @@ print_usage(const char *exe)
 		"-f, --flat                         The flag for enabling generation of a flat galaxy in the x/y plane.\n"
 		"-v, --verbose                      The flag for enabling verbose output.\n"
 		"-h, --help                         Print this help and exit.\n"
-		"--theta\n",
+		"--theta                            The ???\n"
+		"--dt                               The g-force dampening factor\n",
 		// clang-format on
 		exe);
 

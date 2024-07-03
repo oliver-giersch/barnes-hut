@@ -95,6 +95,7 @@ render_axes(float radius)
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 
+	// radius = options.radius;
 	glOrtho(-radius, radius, -radius, radius, 0.1, 3.0 * radius);
 
 	glMatrixMode(GL_MODELVIEW);

@@ -18,6 +18,8 @@ extern struct options {
 	float radius;
 	// The ???.
 	float theta;
+	// The dampening factor.
+	float dt;
 	// The total number of threads to utilize.
 	unsigned threads;
 	// The seed for RNG (0 means no fixed seed).

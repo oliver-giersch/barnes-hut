@@ -17,7 +17,7 @@ $ sudo dnf install mesa-libGL-devel mesa-libGLU-devel SDL2-devel
 #### Debian/Ubuntu
 
 ```console
-$ sudo apt-get install libgl1-mesa-dev libglu1-mesa libsdl2-dev
+$ sudo apt-get install libgl1-mesa-dev libglu1-mesa-dev libsdl2-dev
 ```
 
 ### Compile
