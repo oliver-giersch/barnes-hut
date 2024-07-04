@@ -1,4 +1,4 @@
-EXE     := barnes-hut
+BIN     := barnes-hut
 CC      := /usr/bin/cc
 CFLAGS  := --std=c11 -Werror -Wall -Wpedantic -MMD
 LD      := /usr/bin/cc
@@ -29,17 +29,17 @@ else
 	CFLAGS  += -g
 endif
 
-all: $(EXE)
+all: $(BIN)
 
-$(EXE): $(OBJ) Makefile
+$(BIN): $(OBJ) Makefile
 	$(LD) $(LDFLAGS) $(OBJ) $(LIB) -o $@
 
 $(OBJ): %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@ $(INC)
+	$(CC) $(CFLAGS) $(INC) -c $< -o $@
 
 -include $(DEP)
 
 clean:
-	rm $(OBJ) $(DEP) $(EXE) 2> /dev/null || true
+	rm $(BIN) src/*.o src/*.d 2> /dev/null || true
 
 .PHONY: all clean
