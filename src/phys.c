@@ -399,7 +399,7 @@ static struct vec3
 gforce(const struct particle *p0, const struct particle *p1)
 {
 	static const float G		= 6.6726e-11;
-	static const float min_dist = 8.0;
+	static const float min_dist = 2.0;
 
 	if (unlikely(vec3_eql(&p0->pos, &p1->pos)))
 		return zero_vec;
