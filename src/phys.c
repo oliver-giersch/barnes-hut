@@ -123,7 +123,7 @@ particle_tree_build(struct particle_tree *tree,
 	// Initialize the root octant covering the entire galaxy.
 	struct octant_malloc_return_t root = octant_malloc(particles[0].part,
 		-1 * radius, -1 * radius, -1 * radius, 2 * radius);
-	if ((tree->root = root.item) == ARENA_NULL)
+	if (unlikely((tree->root = root.item) == ARENA_NULL))
 		return ENOMEM;
 
 	// Insert each remaining particle into the tree.
@@ -133,7 +133,7 @@ particle_tree_build(struct particle_tree *tree,
 			return res;
 	}
 
-	octant_update_center(root.octant);
+	(void)octant_update_center(root.octant);
 	return 0;
 }
 
@@ -209,12 +209,13 @@ octant_insert(struct octant *oct, const struct particle *part)
 			return 0;
 		}
 
-		if ((res = octant_insert_child(oct, &oct->center)))
+		if (unlikely((res = octant_insert_child(oct, &oct->center))))
 			return res;
 	}
 
+	oct->bodies += 1;
 	oct->center.mass += part->mass;
-	if ((res = octant_insert_child(oct, part)))
+	if (unlikely((res = octant_insert_child(oct, part))))
 		return res;
 
 	return 0;
@@ -398,7 +399,7 @@ static struct vec3
 gforce(const struct particle *p0, const struct particle *p1)
 {
 	static const float G		= 6.6726e-11;
-	static const float min_dist = 2.0;
+	static const float min_dist = 8.0;
 
 	if (unlikely(vec3_eql(&p0->pos, &p1->pos)))
 		return zero_vec;

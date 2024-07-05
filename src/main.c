@@ -152,9 +152,9 @@ main(int argc, char *argv[argc])
 		if (options.verbose)
 			fprintf(stderr,
 				"step t = %u:\n"
-				"\tbuilt tree in: %ld us\n"
+				"\tbuilt tree in: %ld us, %u tree nodes\n"
 				"\tsimulation in: %ld us\n",
-				step, build_us, step_us);
+				step, build_us, arena.curr, step_us);
 		else
 			fprintf(stdout, "%u,%ld,%ld\n", step, build_us, step_us);
 
