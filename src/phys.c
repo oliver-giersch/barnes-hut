@@ -151,7 +151,6 @@ particle_tree_simulate(const struct particle_tree *tree,
 		octant_update_force(root, &ap->part, &force);
 
 		// Apply the calculated force to the particle's velocity.
-		// vec3_divassign(&force, ap->part.mass * 1.0 / options.dt);
 		vec3_mulassign(&force, options.dt / ap->part.mass);
 		vec3_addassign(&ap->vel, &force);
 		// Apply the calculated velocity the particle's position.
