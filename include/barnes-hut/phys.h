@@ -48,10 +48,13 @@ struct octant {
 	unsigned bodies;
 	// The octant's sub-octants (0-3 are (-z)-coords, 4-7 are (+z)-coords).
 	//
+	//        |---|---|
+	//        | 2 | 3 |
+	//        |---|---|
+	// |---|---|0 | 1 |
+	// | 6 | 7 |--|---|
 	// |---|---|
-	// | 2 | 3 |
-	// |---|---|
-	// | 0 | 1 |
+	// | 4 | 5 |
 	// |---|---|
 	arena_item_t children[OTREE_CHILDREN];
 };
