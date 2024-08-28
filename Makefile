@@ -5,7 +5,7 @@ LD      := /usr/bin/cc
 LDFLAGS :=
 
 # safer alternative: -O3 -fno-math-errno -fno-trapping-math
-COPTFLAGS := -O3 --fast-math
+COPTFLAGS := -O3 -ffast-math
 
 SRC := src/main.c src/options.c src/phys.c
 INC := -I./include

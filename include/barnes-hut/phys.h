@@ -11,21 +11,21 @@ struct vec3 {
 };
 
 // A point-mass particle.
-struct particle {
+struct point_mass {
 	struct vec3 pos;
 	float mass;
 };
 
 // A moving point-mass particle.
-struct accel_particle {
-	struct particle part;
+struct particle {
+	struct point_mass part;
 	struct vec3 vel;
 };
 
 // Randomizes the coordinates of the given list of particles.
-void randomize_particles(struct accel_particle part[], float r);
+void randomize_particles(struct particle part[], float r);
 // Sorts the the given list of particles by a Z-curve ordering.
-void sort_particles(struct accel_particle part[]);
+void sort_particles(struct particle part[]);
 
 // A consecutive view into the global array of particles.
 struct particle_slice {
@@ -34,14 +34,14 @@ struct particle_slice {
 	// The slice's length.
 	size_t len;
 	// The slice's start pointer.
-	struct accel_particle *from;
+	struct particle *from;
 };
 
 // An eight-way partition of a 3-dimensional space containing particles.
 #define OTREE_CHILDREN 8
 struct octant {
 	// The octant's center point mass (cumulative over all contained bodies).
-	struct particle center;
+	struct point_mass center;
 	// The octant's dimensions (lower-left corner and width).
 	float x, y, z, len;
 	// The number of all bodies contained within the octant.
@@ -67,7 +67,7 @@ struct particle_tree {
 
 // Recursively constructs the tree structure for the current simulation step.
 int particle_tree_build(struct particle_tree *tree,
-	const struct accel_particle particles[], float radius);
+	const struct particle particles[], float radius);
 
 // Executes the current simulation step by updating all particles encompassed
 // by the given slice.

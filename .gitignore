@@ -1,3 +1,5 @@
+.cache/
 *.d
 *.o
+compile_commands.json
 /barnes-hut

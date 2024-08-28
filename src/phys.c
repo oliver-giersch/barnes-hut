@@ -42,9 +42,10 @@ randomf(void)
 
 // Returns the morton number for the given x, y, z coordinates.
 static inline uint64_t morton_number(unsigned x, unsigned y, unsigned z);
-static inline int sort_by_z_curve(const struct accel_particle *p0,
-	const struct accel_particle *p1);
-static struct vec3 gforce(const struct particle *p0, const struct particle *p1);
+static inline int sort_by_z_curve(const struct particle *p0,
+	const struct particle *p1);
+static struct vec3 gforce(const struct point_mass *p0,
+	const struct point_mass *p1);
 
 // Adds vector `u` to vector `v`.
 static inline void vec3_addassign(struct vec3 *v, const struct vec3 *u);
@@ -62,7 +63,7 @@ static inline float vec3_dist_sq(const struct vec3 *v, const struct vec3 *u);
 static inline float vec3_dist(const struct vec3 *v, const struct vec3 *u);
 
 void
-randomize_particles(struct accel_particle particles[], float r)
+randomize_particles(struct particle particles[], float r)
 {
 	for (size_t p = 0; p < options.particles; p++) {
 		const float x	 = randomf() * 2 * r - r;
@@ -71,7 +72,7 @@ randomize_particles(struct accel_particle particles[], float r)
 		const float zmax = sqrt(sq(r) - sq(x) - sq(y));
 		const float z	 = (!options.flat) ? randomf() * 2 * zmax - zmax : 0.0;
 
-		particles[p] = (struct accel_particle) {
+		particles[p] = (struct particle) {
 			.part = {
 				.pos = { x, y, z },
 				.mass = options.max_mass,
@@ -82,10 +83,10 @@ randomize_particles(struct accel_particle particles[], float r)
 }
 
 void
-sort_particles(struct accel_particle particles[])
+sort_particles(struct particle particles[])
 {
 	typedef int (*cmp_fn)(const void *, const void *);
-	qsort(particles, options.particles, sizeof(struct accel_particle),
+	qsort(particles, options.particles, sizeof(struct particle),
 		(cmp_fn)&sort_by_z_curve);
 }
 
@@ -99,21 +100,22 @@ static inline bool octant_is_leaf(const struct octant *oct);
 // Arena-allocates and initializes a new octant for the given center and
 // dimensions.
 static inline struct octant_malloc_return_t octant_malloc(
-	struct particle center, float x, float y, float z, float len);
+	struct point_mass center, float x, float y, float z, float len);
 // Inserts the given particle into one of the octant's children.
-static int octant_insert(struct octant *oct, const struct particle *part);
+static int octant_insert(struct octant *oct, const struct point_mass *part);
 // Inserts the particle into the given child octant.
-static int octant_insert_child(struct octant *oct, const struct particle *part);
+static int octant_insert_child(struct octant *oct,
+	const struct point_mass *part);
 // Recursively updates the center point of the given octant.
 static struct vec3 octant_update_center(struct octant *oct);
 // Recursively updates and applies gravitational force to all particles
 // contained in the given octant.
 static void octant_update_force(const struct octant *oct,
-	const struct particle *part, struct vec3 *force);
+	const struct point_mass *part, struct vec3 *force);
 
 int
 particle_tree_build(struct particle_tree *tree,
-	const struct accel_particle particles[], float radius)
+	const struct particle particles[], float radius)
 {
 	int res;
 
@@ -128,7 +130,7 @@ particle_tree_build(struct particle_tree *tree,
 
 	// Insert each remaining particle into the tree.
 	for (size_t i = 1; i < options.particles; i++) {
-		const struct particle *part = &particles[i].part;
+		const struct point_mass *part = &particles[i].part;
 		if ((res = unlikely(octant_insert(root.octant, part))))
 			return res;
 	}
@@ -146,8 +148,8 @@ particle_tree_simulate(const struct particle_tree *tree,
 	float dist_sq		= 0.0;
 
 	for (size_t p = 0; p < slice->len; p++) {
-		struct vec3 force		  = zero_vec;
-		struct accel_particle *ap = &slice->from[p];
+		struct vec3 force	= zero_vec;
+		struct particle *ap = &slice->from[p];
 		octant_update_force(root, &ap->part, &force);
 
 		// Apply the calculated force to the particle's velocity.
@@ -173,7 +175,7 @@ octant_is_leaf(const struct octant *oct)
 }
 
 static inline struct octant_malloc_return_t
-octant_malloc(struct particle center, float x, float y, float z, float len)
+octant_malloc(struct point_mass center, float x, float y, float z, float len)
 {
 	const arena_item_t item = arena_malloc(&arena, sizeof(struct octant));
 	if (unlikely(item == ARENA_NULL))
@@ -197,7 +199,7 @@ octant_malloc(struct particle center, float x, float y, float z, float len)
 }
 
 static int
-octant_insert(struct octant *oct, const struct particle *part)
+octant_insert(struct octant *oct, const struct point_mass *part)
 {
 	int res;
 
@@ -222,7 +224,7 @@ octant_insert(struct octant *oct, const struct particle *part)
 }
 
 static int
-octant_insert_child(struct octant *oct, const struct particle *part)
+octant_insert_child(struct octant *oct, const struct point_mass *part)
 {
 	const float sub_len = oct->len / 2.0;
 
@@ -287,7 +289,7 @@ octant_update_center(struct octant *oct)
 }
 
 static void
-octant_update_force(const struct octant *oct, const struct particle *part,
+octant_update_force(const struct octant *oct, const struct point_mass *part,
 	struct vec3 *force)
 {
 	if (octant_is_leaf(oct)) {
@@ -375,8 +377,7 @@ morton_number(unsigned x, unsigned y, unsigned z)
 }
 
 static inline int
-sort_by_z_curve(const struct accel_particle *p0,
-	const struct accel_particle *p1)
+sort_by_z_curve(const struct particle *p0, const struct particle *p1)
 {
 	const unsigned x0 = (unsigned)p0->part.pos.x;
 	const unsigned y0 = (unsigned)p0->part.pos.y;
@@ -396,7 +397,7 @@ sort_by_z_curve(const struct accel_particle *p0,
 }
 
 static struct vec3
-gforce(const struct particle *p0, const struct particle *p1)
+gforce(const struct point_mass *p0, const struct point_mass *p1)
 {
 	static const float G		= 6.6726e-11;
 	static const float min_dist = 2.0;

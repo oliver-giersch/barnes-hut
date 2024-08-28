@@ -64,7 +64,7 @@ render_deinit(void)
 }
 
 bool
-render_scene(const struct accel_particle particles[], float radius)
+render_scene(const struct particle particles[], float radius)
 {
 	SDL_Event event;
 	while (SDL_PollEvent(&event))
@@ -120,45 +120,6 @@ render_axes(float radius)
 
 	glEnd();
 }
-
-/*static inline float
-sq(float x)
-{
-	return x * x;
-}
-
-static inline float
-vec3_dist_sq(const struct vec3 *v, const struct vec3 *u)
-{
-	return sq(v->x - u->x) + sq(v->y - u->y) + sq(v->z - u->z);
-}
-
-static inline float
-vec3_dist(const struct vec3 *v, const struct vec3 *u)
-{
-	return sqrtf(vec3_dist_sq(v, u));
-}*/
-
-// looks cool
-/*static void
-render_point(const struct vec3 *v, float radius)
-{
-	// static const float sqrt_twelve = 3.464101615;
-
-	// const struct vec3 cam = { radius, radius, radius };
-	// const float dist	  = vec3_dist(v, &cam);
-	const struct vec3 zz = { 0.0, 0.0, 0.0 };
-	const float dist	 = vec3_dist(v, &zz);
-	const float blue	 = (dist / radius);
-	// extern long int random(void);
-	// const float red	  = (float)random() / (float)RAND_MAX;
-	// const float green = (float)random() / (float)RAND_MAX;
-	// blue			  = (float)random() / (float)RAND_MAX;
-	// fprintf(stderr, "%f,%f,%f\n", red, green, blue);
-	glColor3f(0.0, blue, blue);
-
-	glVertex3f(v->x, v->y, v->z);
-}*/
 
 static void
 render_point(const struct vec3 *v, float radius)

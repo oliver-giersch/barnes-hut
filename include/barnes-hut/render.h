@@ -7,6 +7,6 @@
 
 int render_init(void);
 void render_deinit(void);
-bool render_scene(const struct accel_particle particles[], float radius);
+bool render_scene(const struct particle particles[], float radius);
 
 #endif // BARNES_HUT_RENDER_H
