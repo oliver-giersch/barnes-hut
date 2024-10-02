@@ -20,13 +20,11 @@ endif
 OBJ := $(SRC:%.c=%.o)
 DEP := $(SRC:%.c=%.d)
 
-ifeq ($(BUILD),optimize)
-	CFLAGS  += $(COPTFLAGS)
-else ifeq ($(BUILD),optimize-lto)
+ifneq (($BUILD),debug)
 	CFLAGS  += $(COPTFLAGS) -flto
 	LDFLAGS += -Wl,-flto
 else
-	CFLAGS  += -g
+	CFLAGS += -g
 endif
 
 all: $(BIN)

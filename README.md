@@ -22,6 +22,14 @@ $ sudo apt-get install libgl1-mesa-dev libglu1-mesa-dev libsdl2-dev
 
 ### Compile
 
+For default settings *with* 3D rendering:
+
 ```console
-$ make BUILD=optimize-lto RENDER=1
+$ make RENDER=1
+```
+
+For a debug build:
+
+```console
+$ make BUILD=debug
 ```
