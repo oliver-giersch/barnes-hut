@@ -29,6 +29,8 @@ endif
 
 all: $(BIN)
 
+compiledb: compile_commands.json
+
 $(BIN): $(OBJ) Makefile
 	$(LD) $(LDFLAGS) $(OBJ) $(LIB) -o $@
 
@@ -38,6 +40,9 @@ $(OBJ): %.o: %.c
 -include $(DEP)
 
 clean:
-	rm $(BIN) src/*.o src/*.d 2> /dev/null || true
+	rm $(BIN) src/*.o src/*.d compile_commands.json 2> /dev/null || true
 
-.PHONY: all clean
+compile_commands.json:
+	bear -- $(MAKE) RENDER=1 all
+
+.PHONY: all compiledb clean
