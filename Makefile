@@ -20,7 +20,7 @@ endif
 OBJ := $(SRC:%.c=%.o)
 DEP := $(SRC:%.c=%.d)
 
-ifneq (($BUILD),debug)
+ifneq ($(BUILD),debug)
 	CFLAGS  += $(COPTFLAGS) -flto
 	LDFLAGS += -Wl,-flto
 else
