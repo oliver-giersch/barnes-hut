@@ -6,7 +6,6 @@ ContinuationIndentWidth: 4
 AlignAfterOpenBracket: DontAlign
 AlignConsecutiveAssignments: true
 AllowAllArgumentsOnNextLine: false
-AllowAllParametersOnNextLine: false
 AlwaysBreakAfterDefinitionReturnType: All
 BinPackArguments: true
 BinPackParameters: true

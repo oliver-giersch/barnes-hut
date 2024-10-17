@@ -11,6 +11,11 @@ SRC := src/main.c src/options.c src/phys.c
 INC := -I./include
 LIB := -lpthread -lm
 
+ifeq ($(USE_MT19937),1)
+	CFLAGS += -DUSE_MT19937
+	SRC    += src/mt19937_64.c
+endif
+
 ifeq ($(RENDER),1)
 	CFLAGS += -DRENDER
 	SRC    += src/render.c

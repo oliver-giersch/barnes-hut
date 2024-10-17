@@ -15,6 +15,11 @@
 #include "barnes-hut/common.h"
 #include "barnes-hut/options.h"
 
+#ifdef USE_MT19937
+#include "barnes-hut/mt19937_64.h"
+#include <limits.h>
+#endif // USE_MT19937
+
 // The zero/origin vector.
 static const struct vec3 zero_vec = { 0.0, 0.0, 0.0 };
 
@@ -37,7 +42,11 @@ feql(float a, float b)
 static inline float
 randomf(void)
 {
+#ifdef USE_MT19937
+	return (float)mt1993764_int64() / (float)ULONG_MAX;
+#else
 	return (float)random() / (float)RAND_MAX;
+#endif // USE_MT19937
 }
 
 // Returns the morton number for the given x, y, z coordinates.
@@ -72,13 +81,14 @@ randomize_particles(struct particle particles[], float r)
 		const float zmax = sqrt(sq(r) - sq(x) - sq(y));
 		const float z	 = (!options.flat) ? randomf() * 2 * zmax - zmax : 0.0;
 
-		particles[p] = (struct particle) {
-			.part = {
-				.pos = { x, y, z },
-				.mass = options.max_mass,
-			},
-			.vel = zero_vec,
-		};
+		particles[p] = (struct particle){
+        .part =
+            {
+                .pos = {x, y, z},
+                .mass = options.max_mass,
+            },
+        .vel = zero_vec,
+    };
 	}
 }
 

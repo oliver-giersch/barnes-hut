@@ -19,6 +19,11 @@
 #include "barnes-hut/common.h"
 #include "barnes-hut/options.h"
 #include "barnes-hut/phys.h"
+
+#ifdef USE_MT19937
+#include "barnes-hut/mt19937_64.h"
+#endif // USE_MT19937
+
 #ifdef RENDER
 #include "barnes-hut/render.h"
 #endif // RENDER
@@ -266,7 +271,11 @@ static struct particle *
 init_particles(void)
 {
 	if (options.seed != 0)
+#ifdef USE_MT19937
+		mt1993764_init(options.seed);
+#else
 		srandom(options.seed);
+#endif // USE_MT19937
 
 	struct particle *particles
 		= malloc(sizeof(struct particle) * options.particles);
