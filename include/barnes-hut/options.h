@@ -16,7 +16,7 @@ extern struct options {
 	float max_mass;
 	// The initial radius of the galaxy.
 	float radius;
-	// The ???.
+	// The minimum distance for two octants to be considered identical.
 	float theta;
 	// The dampening factor.
 	float dt;

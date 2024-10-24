@@ -213,12 +213,12 @@ print_usage(const char *exe)
 		"-p [THREADS], --threads=[THREADS]  The number of threads to use for the simulation.\n"
 		"-s [SEED], --seed=[SEED]           The seed for random number generation (0..UINT_MAX).\n"
 		"-d [DELAY], --delay=[DELAY]        The delay in ms after each simulation step.\n"
+		"--theta=[THETA]                    The minimum distance for two octants to be considered identical.\n"
+		"--dt=[DT]                          The g-force dampening factor\n"
 		"-o, --optimize                     The flag for enabling memory hierachy optimizations.\n"
 		"-f, --flat                         The flag for enabling generation of a flat galaxy in the x/y plane.\n"
 		"-v, --verbose                      The flag for enabling verbose output.\n"
-		"-h, --help                         Print this help and exit.\n"
-		"--theta                            The ???\n"
-		"--dt                               The g-force dampening factor\n",
+		"-h, --help                         Print this help and exit.\n",
 		// clang-format on
 		exe);
 

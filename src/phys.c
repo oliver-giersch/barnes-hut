@@ -42,6 +42,7 @@ randomf(void)
 
 // Returns the morton number for the given x, y, z coordinates.
 static inline uint64_t morton_number(unsigned x, unsigned y, unsigned z);
+static inline uint64_t morton_number_vec3(const struct vec3 *v);
 static inline int sort_by_z_curve(const struct particle *p0,
 	const struct particle *p1);
 static struct vec3 gforce(const struct point_mass *p0,
@@ -376,18 +377,18 @@ morton_number(unsigned x, unsigned y, unsigned z)
 	return res;
 }
 
+static inline uint64_t
+morton_number_vec3(const struct vec3 *v)
+{
+	return morton_number((unsigned)v->x, (unsigned)v->y, (unsigned)v->z);
+}
+
 static inline int
 sort_by_z_curve(const struct particle *p0, const struct particle *p1)
 {
-	const unsigned x0 = (unsigned)p0->part.pos.x;
-	const unsigned y0 = (unsigned)p0->part.pos.y;
-	const unsigned z0 = (unsigned)p0->part.pos.z;
-	const unsigned x1 = (unsigned)p1->part.pos.x;
-	const unsigned y1 = (unsigned)p1->part.pos.y;
-	const unsigned z1 = (unsigned)p1->part.pos.z;
+	const uint64_t m0 = morton_number_vec3(&p0->part.pos);
+	const uint64_t m1 = morton_number_vec3(&p1->part.pos);
 
-	const uint64_t m0 = morton_number(x0, y0, z0);
-	const uint64_t m1 = morton_number(x1, y1, z1);
 	if (m0 < m1)
 		return -1;
 	else if (m0 > m1)
