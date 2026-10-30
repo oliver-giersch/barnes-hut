@@ -1,5 +1,6 @@
 #include "barnes-hut/thread.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <threads.h>
@@ -25,9 +26,9 @@ static void thread_notify_wake_one(struct thread_notify *notify,
 	thread_notify_update_fn fn, void *ctx);
 
 typedef struct {
-	cnd_t	cnd;
-	mtx_t	mtx;
-	int		state;
+	cnd_t cnd;
+	mtx_t mtx;
+	int state;
 } futex_t;
 
 static inline error_t
@@ -35,9 +36,9 @@ futex_init(futex_t *futex, int init)
 {
 	error_t error;
 
-	if ((error = cnd_init(&futex->cnt))
+	if ((error = cnd_init(&futex->cnd)))
 		return (error);
-	if ((error = mtx_init(&futex->mtx))
+	if ((error = mtx_init(&futex->mtx, mtx_plain)))
 		return (error);
 
 	futex->state = init;
@@ -45,17 +46,18 @@ futex_init(futex_t *futex, int init)
 }
 
 static inline void
-futex_wait(futex_t *futex, int expected) {
+futex_wait(futex_t *futex, int expected)
+{
 	mtx_lock(&futex->mtx);
 
 	while (futex->state == expected)
-		cnd_wait(&futex->cond, &futex->mtx);
+		cnd_wait(&futex->cnd, &futex->mtx);
 
 	mtx_unlock(&futex->mtx);
 	return;
 }
 
-typedef int (update_fn_t)(int);
+typedef int(update_fn_t)(int);
 
 static inline void
 futex_wake_one(futex_t *futex, update_fn_t fn)
@@ -83,9 +85,10 @@ thread_pool_init(size_t threads)
 
 	thread_pool_size = (thread_pool_size <= thread_pool_alignment)
 		? thread_pool_alignment
-		: (thread_pool_size / thread_pool_alignment) * thread_pool_aignment;
+		: (thread_pool_size / thread_pool_alignment) * thread_pool_alignment;
 
-	struct thread_pool *pool = aligned_alloc(thread_pool_alignment, thread_pool_size);
+	struct thread_pool *pool
+		= aligned_alloc(thread_pool_alignment, thread_pool_size);
 	if (pool == nullptr)
 		return nullptr;
 
@@ -119,7 +122,7 @@ thread_pool_build(struct thread_pool *pool, struct particle particles[],
 
 	for (int i = 0; i < pool->worker_count; i++)
 		if (pool->workers[i].error != 0)
-			return NaN; // FIXME: return int/error
+			return FP_NAN; // FIXME: return int/error
 
 	// FIXME: (parallel?) update center?
 }
@@ -151,16 +154,16 @@ thread_notify_init(struct thread_notify *notify)
 {
 	error_t error;
 
-	if ((error = cnd_init(&notify->cnd))
+	if ((error = cnd_init(&notify->cnd)))
 		return error;
-	if ((error = mtx_init(&notify->mtx))
+	if ((error = mtx_init(&notify->mtx, mtx_plain)))
 		return error;
 	return 0;
 }
 
 static void
-thread_notify_wait(struct thread_notify *notify,
-	thread_notify_check_fn fn, void *ctx)
+thread_notify_wait(struct thread_notify *notify, thread_notify_check_fn fn,
+	void *ctx)
 {
 	mtx_lock(&notify->mtx);
 
@@ -174,4 +177,3 @@ static void thread_notify_wake(struct thread_notify *notify,
 	thread_notify_update_fn fn, void *ctx);
 static void thread_notify_wake_one(struct thread_notify *notify,
 	thread_notify_update_fn fn, void *ctx);
-
