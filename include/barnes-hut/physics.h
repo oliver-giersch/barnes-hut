@@ -22,6 +22,7 @@ struct particle {
 	struct vec3 v;
 };
 
+/* The size of the particles array. */
 extern size_t particle_count;
 
 extern void particle_init(struct particle *particle, scalar_t x, scalar_t y,

@@ -2,9 +2,11 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <threads.h>
 
+#include "barnes-hut/def.h"
 #include "barnes-hut/physics.h"
 
 static constexpr size_t thread_pool_alignment = 4096;
@@ -24,6 +26,13 @@ static void thread_notify_wake(struct thread_notify *notify,
 	thread_notify_update_fn fn, void *ctx);
 static void thread_notify_wake_one(struct thread_notify *notify,
 	thread_notify_update_fn fn, void *ctx);
+
+/* Progress printing */
+
+struct progress {
+	atomic size_t	*global_progress;
+	size_t			local_progress;
+};
 
 typedef struct {
 	cnd_t cnd;

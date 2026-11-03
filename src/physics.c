@@ -1,6 +1,6 @@
 #include "barnes-hut/physics.h"
 
-#include <stdatomic.>
+#include <stdatomic.h>
 #include <tgmath.h>
 
 #include "barnes-hut/def.h"

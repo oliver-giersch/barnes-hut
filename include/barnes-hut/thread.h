@@ -5,6 +5,7 @@
 #include <threads.h>
 
 #include "barnes-hut/types.h"
+#include "barnes-hut/physics.h"
 
 enum thread_state : int {
 	THREAD_IDLE			= 0,
@@ -60,4 +61,3 @@ extern scalar_t thread_pool_build(struct thread_pool *pool,
 extern scalar_t thread_pool_simulate(struct thread_pool *pool);
 
 #endif /* BARNES_HUT_THREAD_H */
-
