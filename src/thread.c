@@ -7,11 +7,13 @@
 #include <threads.h>
 
 #include "barnes-hut/def.h"
+#include "barnes-hut/octree.h"
 #include "barnes-hut/physics.h"
 
 static constexpr size_t thread_pool_alignment = 4096;
 static constexpr size_t pool_mask = thread_pool_alignment - 1;
 
+static void thread_pool_run(struct thread_pool *pool, enum thread_state task);
 static error_t thread_pool_worker_main(void *arg);
 
 /* Notify */
@@ -123,17 +125,24 @@ thread_pool_build(struct thread_pool *pool, struct particle particles[],
 
 	const auto len = radius * 2.0;
 
-	for (int i = 0; i < pool->worker_count; i++)
-		pool->worker[i].len = len;
+	for (unsigned i = 0; i < pool->worker_count; i++)
+		pool->workers[i]->len = len;
 
 	pool->work_idx = 1; // FIXME: atomic store?
 	thread_pool_run(pool, THREAD_BUILD);
 
-	for (int i = 0; i < pool->worker_count; i++)
-		if (pool->workers[i].error != 0)
+	for (unsigned i = 0; i < pool->worker_count; i++)
+		if (pool->workers[i]->error != 0)
 			return FP_NAN; // FIXME: return int/error
 
 	// FIXME: (parallel?) update center?
+}
+
+static void
+thread_pool_run(struct thread_pool *pool, enum thread_state task)
+{
+	// set run count
+	// for each worker: set task and wake
 }
 
 static error_t

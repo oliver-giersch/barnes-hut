@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "barnes-hut/physics.h"
+#include "barnes-hut/types.h"
 
 typedef uint32_t octant_id_t;
 
@@ -24,6 +25,9 @@ struct octant {
 	octant_id_t children[octant_children];
 };
 
+extern void octant_init(struct octant *octant, struct point_mass *center,
+	scalar_t x, scalar_t y, scalar_t z);
+
 struct octant_arena {
 	struct octant *memory;
 	octant_id_t idx;
@@ -31,7 +35,7 @@ struct octant_arena {
 };
 
 /* The global octant arena. */
-extern struct octant_arena arena;
+extern struct octant_arena octant_arena;
 
 /* ... */
 static constexpr size_t octant_cache_len = 32;

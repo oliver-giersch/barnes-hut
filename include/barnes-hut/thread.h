@@ -38,6 +38,7 @@ struct thread_pool_worker {
 	size_t						task_size;
 	size_t						sort_task_task;
 	error_t						error;
+	scalar_t					len;
 };
 
 struct thread_pool {
