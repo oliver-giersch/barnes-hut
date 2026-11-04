@@ -27,6 +27,8 @@ struct octant {
 
 extern void octant_init(struct octant *octant, struct point_mass *center,
 	scalar_t x, scalar_t y, scalar_t z);
+extern void octant_insert_non_blocking(struct octant *octant,
+	struct point_mass *pm, scalar_t len, struct octant_cache *cache);
 
 struct octant_arena {
 	struct octant *memory;

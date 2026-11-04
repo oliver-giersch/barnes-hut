@@ -29,18 +29,22 @@ struct thread_notify {
 // fixme: need N wake/wait state for each worker
 
 struct thread_pool_worker {
-	struct thread_pool			*pool;
-	thrd_t						thread;
-	bool						is_ready;
+	struct {
+		struct thread_pool		*pool;
+		thrd_t					thread;
+		bool					is_ready;
+	} aligned(cache_line_size);
 
 	struct thread_notify		state;
 
-	struct particle				*particles;
-	size_t						particle_count;
-	size_t						task_size;
-	size_t						sort_task_task;
-	error_t						error;
-	scalar_t					len;
+	struct {
+		struct particle			*particles;
+		size_t					particle_count;
+		size_t					task_size;
+		size_t					sort_task_task;
+		error_t					error;
+		scalar_t				len;
+	};
 };
 
 struct thread_pool {
@@ -51,7 +55,7 @@ struct thread_pool {
 	} aligned(64);
 
 	struct {
-		volatile size_t			work_idx;
+		atomic size_t			work_idx;
 	} aligned(64);
 
 	size_t						worker_count;

@@ -11,10 +11,12 @@ typedef double scalar_t;
 /* The type describing a particle's mass. */
 typedef double mass_t;
 
+/* The standard error type. */
 typedef int error_t;
 
 struct vec3;
 struct particle;
 struct octant;
+struct octant_cache;
 
 #endif /* BARNES_HUT_TYPES_H */

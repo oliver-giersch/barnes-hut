@@ -19,7 +19,12 @@ static void thread_pool_run(struct thread_pool *pool, enum thread_state task);
 static void thread_pool_wait_done(struct thread_pool *pool);
 static void thread_pool_notify_done(struct thread_pool *pool);
 
+/* Worker thread */
+
 static error_t thread_pool_worker_main(void *arg);
+static void thread_pool_worker_build(void);
+static struct particle *thread_pool_worker_next_batch(
+	struct thread_pool_worker *worker, size_t *len);
 
 /* Notify */
 
@@ -98,12 +103,12 @@ extern scalar_t
 thread_pool_build(struct thread_pool *pool, struct particle particles[],
 	scalar_t radius)
 {
-	const auto corner = -radius;
-	const auto id = octant_arena_alloc(&octant_arena);
-	const auto root = octant_arena_resolve(&octant_arena, id);
+	const scalar_t corner = -radius;
+	const scalar_t id = octant_arena_alloc(&octant_arena);
+	const scalar_t root = octant_arena_resolve(&octant_arena, id);
 	octant_init(root, &particles[0].pm, corner, corner, corner);
 
-	const auto len = radius * 2.0;
+	const scalar_t len = radius * 2.0;
 
 	for (unsigned i = 0; i < pool->worker_count; i++)
 		pool->workers[i]->len = len;
@@ -150,6 +155,8 @@ thread_pool_notify_done(struct thread_pool *pool)
 		thread_notify_wake_one(&pool->running_count);
 }
 
+/* Worker thread */
+
 static error_t
 thread_pool_worker_main(void *arg)
 {
@@ -185,8 +192,51 @@ thread_pool_worker_main(void *arg)
 		} else if (state == THREAD_EXIT)
 			break;
 
+		if (state == THREAD_RANDOMIZE)
+			;
+		else if (state == THREAD_SORT)
+			;
+		else if (state == THREAD_BUILD)
+			;
+		else if (state == THREAD_SIMULATE)
+			;
+		else
+			__builtin_unreachable();
+
+
 	}
 }
+
+static void
+thread_pool_worker_build(struct thread_pool_worker *worker, const struct particle particles[], struct octant *root, scalar_t len)
+{
+	struct particle *particles;
+	size_t len;
+	while ((particles = thread_pool_worker_next_batch(worker, &len)) != nullptr) {
+		//for ...
+		octant_tree_build_non_blocking(root, &particles->pm, len, cache);
+	}
+}
+
+static struct particle * //fixme: slice + len?
+thread_pool_worker_next_batch(struct thread_pool_worker *worker, size_t *len)
+{
+	assert(worker->is_ready, "");
+
+	const size_t task_size = worker->task_size;
+	const size_t start = atomic_fetch_add_explicit(&worker->pool->work_idx, task_size, memory_order_relaxed);
+	if (start > particle_count)
+		return (nullptr);
+
+	const size_t end = (start + task_size < particle_count)
+		? start + task_size
+		: particle_count;
+	*len = end - start;
+
+	return worker->particles + start;
+}
+
+/* Notify */
 
 static error_t
 thread_notify_init(struct thread_notify *notify)
