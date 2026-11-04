@@ -14,7 +14,7 @@ static inline scalar_t vec3_dist_sq(const struct vec3 *v, const struct vec3 *u);
 static inline void vec3_assign_add(struct vec3 *v, const struct vec3 *u);
 static inline void vec3_assign_mul(struct vec3 *v, const struct vec3 *u);
 static inline void vec3_assign_div(struct vec3 *v, const struct vec3 *u);
-static inline void vec3_assign_addmul(struct vec3 *v, const struct *u,
+static inline void vec3_assign_addmul(struct vec3 *v, const struct vec3 *u,
 	scalar_t t);
 
 static inline scalar_t scalar_sq(scalar_t x);

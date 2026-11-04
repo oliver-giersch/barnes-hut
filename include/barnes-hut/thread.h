@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <threads.h>
 
+#include "barnes-hut/def.h"
 #include "barnes-hut/types.h"
 #include "barnes-hut/physics.h"
 
@@ -19,8 +20,9 @@ enum thread_state : int {
 struct thread_pool;
 
 struct thread_notify {
-	cnd_t	cnd;
-	mtx_t	mtx;
+	atomic int	state;
+	cnd_t		cnd;
+	mtx_t		mtx;
 };
 
 // fixme: need one wake/wait counter for the pool
@@ -28,10 +30,10 @@ struct thread_notify {
 
 struct thread_pool_worker {
 	struct thread_pool			*pool;
+	thrd_t						thread;
 	bool						is_ready;
 
-	struct thread_notify		notify;
-	volatile enum thread_state	state;
+	struct thread_notify		state;
 
 	struct particle				*particles;
 	size_t						particle_count;
@@ -44,10 +46,13 @@ struct thread_pool_worker {
 struct thread_pool {
 	struct thread_pool_worker	main_worker;
 
-	struct thread_notify		notify;
-	size_t						running_count;
+	struct {
+		struct thread_notify	running_count;
+	} aligned(64);
 
-	volatile size_t				work_idx;
+	struct {
+		volatile size_t			work_idx;
+	} aligned(64);
 
 	size_t						worker_count;
 	struct thread_pool_worker	*workers[];

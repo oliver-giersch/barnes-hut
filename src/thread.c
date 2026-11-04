@@ -1,6 +1,7 @@
 #include "barnes-hut/thread.h"
 
 #include <math.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,25 +10,23 @@
 #include "barnes-hut/def.h"
 #include "barnes-hut/octree.h"
 #include "barnes-hut/physics.h"
+#include "barnes-hut/types.h"
 
 static constexpr size_t thread_pool_alignment = 4096;
 static constexpr size_t pool_mask = thread_pool_alignment - 1;
 
 static void thread_pool_run(struct thread_pool *pool, enum thread_state task);
+static void thread_pool_wait_done(struct thread_pool *pool);
+static void thread_pool_notify_done(struct thread_pool *pool);
+
 static error_t thread_pool_worker_main(void *arg);
 
 /* Notify */
 
-typedef bool (*thread_notify_check_fn)(void *);
-typedef void (*thread_notify_update_fn)(void *);
-
 static error_t thread_notify_init(struct thread_notify *notify);
-static void thread_notify_wait(struct thread_notify *notify,
-	thread_notify_check_fn fn, void *ctx);
-static void thread_notify_wake(struct thread_notify *notify,
-	thread_notify_update_fn fn, void *ctx);
-static void thread_notify_wake_one(struct thread_notify *notify,
-	thread_notify_update_fn fn, void *ctx);
+static void thread_notify_wait(struct thread_notify *notify, int expected);
+static void thread_notify_wake_one(struct thread_notify *notify);
+static void thread_notify_wake_all(struct thread_notify *notify);
 
 /* Progress printing */
 
@@ -36,61 +35,22 @@ struct progress {
 	size_t			local_progress;
 };
 
-typedef struct {
-	cnd_t cnd;
-	mtx_t mtx;
-	int state;
-} futex_t;
+/* Utility */
 
-static inline error_t
-futex_init(futex_t *futex, int init)
-{
-	error_t error;
+struct thread_ctx {
+	struct thread_pool	*pool;
+	unsigned			idx;
+};
 
-	if ((error = cnd_init(&futex->cnd)))
-		return (error);
-	if ((error = mtx_init(&futex->mtx, mtx_plain)))
-		return (error);
-
-	futex->state = init;
-	return (0);
-}
-
-static inline void
-futex_wait(futex_t *futex, int expected)
-{
-	mtx_lock(&futex->mtx);
-
-	while (futex->state == expected)
-		cnd_wait(&futex->cnd, &futex->mtx);
-
-	mtx_unlock(&futex->mtx);
-	return;
-}
-
-typedef int(update_fn_t)(int);
-
-static inline void
-futex_wake_one(futex_t *futex, update_fn_t fn)
-{
-	mtx_lock(&futex->mtx);
-	futex->state = (fn)(futex->state);
-	cnd_signal(&futex->cnd);
-	mtx_unlock(&futex->mtx);
-}
-
-static inline void
-futex_wake(futex_t *futex, update_fn_t fn)
-{
-	mtx_lock(&futex->mtx);
-	futex->state = (fn)(futex->state);
-	cnd_broadcast(&futex->cnd);
-	mtx_unlock(&futex->mtx);
-}
+static inline void *thread_ctx_compose(struct thread_pool *pool, unsigned idx);
+static inline struct thread_ctx thread_ctx_decompose(void *ctx);
 
 extern struct thread_pool *
 thread_pool_init(size_t threads)
 {
+	error_t error;
+
+	/* Calculate the (dynamic) thread pool memory size. */
 	size_t thread_pool_size = sizeof(struct thread_pool)
 		+ (threads * sizeof(struct thread_pool_worker *));
 
@@ -103,15 +63,35 @@ thread_pool_init(size_t threads)
 	if (pool == nullptr)
 		return nullptr;
 
-	pool->main_worker = (struct thread_pool_worker) {
-		.pool = pool,
-		.state = THREAD_IDLE,
-		.is_ready = false,
-	},
+	/* Initialize the pool and main worker notify instances. */
+	if ((error = thread_notify_init(&pool->running_count)))
+		goto error_exit;
+	if ((error = thread_notify_init(&pool->main_worker.state)))
+		goto error_exit;
+
+	/* Initialize the main thread worker and pool. */
 	pool->worker_count = threads;
 	pool->workers[0] = &pool->main_worker;
+	pool->running_count.state = threads - 1;
+
+	pool->main_worker.pool = pool;
+	pool->main_worker.thread = thrd_current();
+	pool->main_worker.is_ready = false;
+	pool->main_worker.state.state = THREAD_IDLE;
+
+	for (unsigned i = 1; i < threads; i++) {
+		error = thrd_create(&pool->workers[i]->thread, thread_pool_worker_main,
+			thread_ctx_compose(pool, i));
+	}
+
+	/* Wait until all worker threads have initialized their state. */
+	thread_pool_wait_done(pool);
 
 	return pool;
+
+error_exit:
+	free_aligned_sized(pool, thread_pool_alignment, thread_pool_size);
+	return nullptr;
 }
 
 extern scalar_t
@@ -145,13 +125,37 @@ thread_pool_run(struct thread_pool *pool, enum thread_state task)
 	// for each worker: set task and wake
 }
 
+static void
+thread_pool_wait_done(struct thread_pool *pool)
+{
+	int running_count;
+
+	while (true) {
+		running_count = atomic_load_explicit(&pool->running_count.state,
+			memory_order_relaxed);
+		if (running_count == 0)
+			return;
+
+		thread_notify_wait(&pool->running_count, running_count);
+	}
+}
+
+static void
+thread_pool_notify_done(struct thread_pool *pool)
+{
+	const int running_count = atomic_fetch_sub_explicit(
+		&pool->running_count.state, 1, memory_order_release) - 1;
+	assert(running_count >= 0, "...");
+	if (running_count == 0)
+		thread_notify_wake_one(&pool->running_count);
+}
+
 static error_t
 thread_pool_worker_main(void *arg)
 {
-	const uintptr_t ptr = (uintptr_t)arg;
-
-	struct thread_pool *pool = (struct thread_pool *)(ptr & ~pool_mask);
-	const int idx = (int)(ptr & pool_mask);
+	struct thread_ctx ctx = thread_ctx_decompose(arg);
+	struct thread_pool *pool = ctx.pool;
+	unsigned idx = ctx.idx;
 
 	struct thread_pool_worker worker = {
 		.pool = pool,
@@ -159,12 +163,29 @@ thread_pool_worker_main(void *arg)
 		.is_ready = false,
 	};
 
+	worker.pool = pool;
+	worker.is_ready = false;
+	error_t error = thread_notify_init(&worker.state);
+
+
 	pool->workers[idx] = &worker;
+	thread_pool_notify_done(pool);
+
 
 	// atomic release-store
 	// futex_wake_one
 
 	// then loop forever, waiting for tasks
+	while (true) {
+		const int state = atomic_load_explicit(&worker.state.state,
+			memory_order_relaxed);
+		if (state == THREAD_IDLE) {
+			thread_notify_wait(&worker.state, THREAD_IDLE);
+			continue;
+		} else if (state == THREAD_EXIT)
+			break;
+
+	}
 }
 
 static error_t
@@ -174,24 +195,63 @@ thread_notify_init(struct thread_notify *notify)
 
 	if ((error = cnd_init(&notify->cnd)))
 		return error;
-	if ((error = mtx_init(&notify->mtx, mtx_plain)))
+
+	if ((error = mtx_init(&notify->mtx, mtx_plain))) {
+		cnd_destroy(&notify->cnd);
 		return error;
+	}
+
 	return 0;
 }
 
 static void
-thread_notify_wait(struct thread_notify *notify, thread_notify_check_fn fn,
-	void *ctx)
+thread_notify_wait(struct thread_notify *notify, int expected)
 {
+	if (atomic_load_explicit(&notify->state, memory_order_relaxed) != expected)
+		return;
+
 	mtx_lock(&notify->mtx);
-
-	if ((fn)(ctx))
+	if (atomic_load_explicit(&notify->state, memory_order_relaxed) == expected)
 		cnd_wait(&notify->cnd, &notify->mtx);
-
 	mtx_unlock(&notify->mtx);
 }
 
-static void thread_notify_wake(struct thread_notify *notify,
-	thread_notify_update_fn fn, void *ctx);
-static void thread_notify_wake_one(struct thread_notify *notify,
-	thread_notify_update_fn fn, void *ctx);
+static void
+thread_notify_wake_one(struct thread_notify *notify)
+{
+	mtx_lock(&notify->mtx);
+	cnd_signal(&notify->cnd);
+	mtx_unlock(&notify->mtx);
+}
+
+static void
+thread_notify_wake_all(struct thread_notify *notify)
+{
+	mtx_lock(&notify->mtx);
+	cnd_broadcast(&notify->cnd);
+	mtx_unlock(&notify->mtx);
+}
+
+/* Utility */
+
+static inline void
+*thread_ctx_compose(struct thread_pool *pool, unsigned idx)
+{
+	//assert(idx < thread_pool_alignment);
+	uintptr_t composed = (uintptr_t)pool;
+	composed |= (uintptr_t)idx;
+
+	return (void *)composed;
+}
+
+static inline struct thread_ctx
+thread_ctx_decompose(void *ctx)
+{
+	uintptr_t addr = (uintptr_t)ctx;
+	struct thread_ctx thread_ctx =  {
+		.pool = (struct thread_pool *)(addr & ~pool_mask),
+		.idx = (unsigned)(addr & pool_mask),
+	};
+
+	return thread_ctx;
+}
