@@ -14,6 +14,11 @@ typedef double mass_t;
 /* The standard error type. */
 typedef int error_t;
 
+enum : error_t {
+    ERROR_SUCCESS		= 0,
+    ERROR_EXIT_EARLY	= 1,
+};
+
 struct vec3;
 struct particle;
 struct octant;

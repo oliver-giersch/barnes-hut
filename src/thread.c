@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +10,7 @@
 
 #include "barnes-hut/def.h"
 #include "barnes-hut/octree.h"
+#include "barnes-hut/options.h"
 #include "barnes-hut/physics.h"
 #include "barnes-hut/types.h"
 
@@ -19,12 +21,22 @@ static void thread_pool_run(struct thread_pool *pool, enum thread_state task);
 static void thread_pool_wait_done(struct thread_pool *pool);
 static void thread_pool_notify_done(struct thread_pool *pool);
 
+struct batch {
+	struct particle	*start;
+	struct particle	*end;
+};
+
+static bool thread_pool_next_batch(struct thread_pool *pool,
+	struct particle particles[], struct batch *batch);
+
 /* Worker thread */
 
 static error_t thread_pool_worker_main(void *arg);
-static void thread_pool_worker_build(void);
-static struct particle *thread_pool_worker_next_batch(
-	struct thread_pool_worker *worker, size_t *len);
+static void thread_pool_worker_build(struct thread_pool_worker *worker,
+	struct particle particles[], struct octant *root, scalar_t len);
+
+static bool thread_pool_worker_next_batch(struct thread_pool_worker *worker,
+	struct batch *batch);
 
 /* Notify */
 
@@ -32,13 +44,6 @@ static error_t thread_notify_init(struct thread_notify *notify);
 static void thread_notify_wait(struct thread_notify *notify, int expected);
 static void thread_notify_wake_one(struct thread_notify *notify);
 static void thread_notify_wake_all(struct thread_notify *notify);
-
-/* Progress printing */
-
-struct progress {
-	atomic size_t	*global_progress;
-	size_t			local_progress;
-};
 
 /* Utility */
 
@@ -49,6 +54,23 @@ struct thread_ctx {
 
 static inline void *thread_ctx_compose(struct thread_pool *pool, unsigned idx);
 static inline struct thread_ctx thread_ctx_decompose(void *ctx);
+
+/* Progress printing */
+
+#if (OPTION_PRINT_PROGRESS == 1)
+struct progress_bar {
+	atomic size_t	*global_progress;
+	size_t			local_progress;
+	size_t			step;
+};
+#else
+struct progress_bar {
+	char _;
+};
+#endif /* OPTION_PRINT_PROGRESS */
+
+static void progress_bar_print(struct progress_bar *bar,
+	const struct thread_pool_worker *worker);
 
 extern struct thread_pool *
 thread_pool_init(size_t threads)
@@ -155,6 +177,29 @@ thread_pool_notify_done(struct thread_pool *pool)
 		thread_notify_wake_one(&pool->running_count);
 }
 
+static bool
+thread_pool_next_batch(struct thread_pool *pool, struct particle particles[],
+	struct batch *batch)
+{
+	const size_t task_size = pool->step_task_size;
+	const size_t start = atomic_fetch_add_explicit(&pool->work_idx,
+		task_size, memory_order_relaxed);
+
+	if (start > particle_count)
+		return false;
+
+	const size_t end = (start + task_size < particle_count)
+		? start + task_size
+		: particle_count;
+
+	*batch = (struct batch){
+		.start = particles + start,
+		.end = particles + end,
+	};
+
+	return true;
+}
+
 /* Worker thread */
 
 static error_t
@@ -164,17 +209,17 @@ thread_pool_worker_main(void *arg)
 	struct thread_pool *pool = ctx.pool;
 	unsigned idx = ctx.idx;
 
-	struct thread_pool_worker worker = {
-		.pool = pool,
-		.state = THREAD_IDLE,
-		.is_ready = false,
-	};
+	struct thread_pool_worker worker;
+
+	error_t error = thread_notify_init(&worker.state);
+	if (error)
+		goto out;
 
 	worker.pool = pool;
+	worker.state.state = THREAD_IDLE;
 	worker.is_ready = false;
-	error_t error = thread_notify_init(&worker.state);
 
-
+	/* Register the initialized worker with the pool. */
 	pool->workers[idx] = &worker;
 	thread_pool_notify_done(pool);
 
@@ -185,19 +230,22 @@ thread_pool_worker_main(void *arg)
 	// then loop forever, waiting for tasks
 	while (true) {
 		const int state = atomic_load_explicit(&worker.state.state,
-			memory_order_relaxed);
+			memory_order_acquire);
 		if (state == THREAD_IDLE) {
 			thread_notify_wait(&worker.state, THREAD_IDLE);
 			continue;
 		} else if (state == THREAD_EXIT)
 			break;
 
+		assert(worker.is_ready, "");
 		if (state == THREAD_RANDOMIZE)
 			;
 		else if (state == THREAD_SORT)
 			;
 		else if (state == THREAD_BUILD)
-			;
+			// publish the "local" extent!
+			thread_pool_worker_build(&worker, worker.particles, worker.root,
+				worker.len);
 		else if (state == THREAD_SIMULATE)
 			;
 		else
@@ -205,35 +253,50 @@ thread_pool_worker_main(void *arg)
 
 
 	}
+
+out:
+	thread_pool_notify_done(pool);
+	return (error);
 }
 
 static void
-thread_pool_worker_build(struct thread_pool_worker *worker, const struct particle particles[], struct octant *root, scalar_t len)
+thread_pool_worker_build(struct thread_pool_worker *worker,
+	struct particle particles[], struct octant *root, scalar_t len)
 {
-	struct particle *particles;
-	size_t len;
-	while ((particles = thread_pool_worker_next_batch(worker, &len)) != nullptr) {
-		//for ...
-		octant_tree_build_non_blocking(root, &particles->pm, len, cache);
+	struct batch batch;
+	struct particle *particle;
+
+	while (thread_pool_next_batch(worker->pool, particles, &batch)) {
+		for (particle = batch.start; particle < batch.end; particle++) {
+			octant_insert_non_blocking(root, &particle->pm, len, nullptr);
+			progress_print(&progress);
+		}
 	}
 }
 
-static struct particle * //fixme: slice + len?
-thread_pool_worker_next_batch(struct thread_pool_worker *worker, size_t *len)
+static bool
+thread_pool_worker_next_batch(struct thread_pool_worker *worker,
+	struct batch *batch)
 {
 	assert(worker->is_ready, "");
 
 	const size_t task_size = worker->task_size;
-	const size_t start = atomic_fetch_add_explicit(&worker->pool->work_idx, task_size, memory_order_relaxed);
+	const size_t start = atomic_fetch_add_explicit(&worker->pool->work_idx,
+		task_size, memory_order_relaxed);
+
 	if (start > particle_count)
-		return (nullptr);
+		return false;
 
 	const size_t end = (start + task_size < particle_count)
 		? start + task_size
 		: particle_count;
-	*len = end - start;
 
-	return worker->particles + start;
+	*batch = (struct batch){
+		.start = worker->particles + start,
+		.end = worker->particles + end,
+	};
+
+	return true;
 }
 
 /* Notify */
@@ -304,4 +367,32 @@ thread_ctx_decompose(void *ctx)
 	};
 
 	return thread_ctx;
+}
+
+/* Progress */
+
+static void
+progress_bar_print(struct progress_bar *bar,
+	const struct thread_pool_worker *worker)
+{
+	if (!options->verbose)
+		return;
+
+#if (OPTION_PRINT_PROGRESS == 1)
+	bar->local_progress += 1;
+	if (bar->local_progress < bar->step)
+		return;
+
+	atomic_fetch_add_explicit(bar->global_progress, bar->local_progress,
+		memory_order_relaxed);
+	bar->local_progress = 0;
+
+	if (worker->idx != 0)
+		return;
+
+	static constexpr char fill = '#'; // '█'
+#else
+	(void)bar;
+	(void)worker;
+#endif /* OPTION_PRINT_PROGRESS */
 }
