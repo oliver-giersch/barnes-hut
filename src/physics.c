@@ -44,7 +44,7 @@ octant_tree_build(const struct particle particles[], scalar_t radius, scalar_t l
 
 // FIXME: declare first
 void
-octant_insert_non_blocking(struct octant *octant, struct point_mass *pm, scalar_t len, struct octant_cache *cache)
+octant_insert_threadsafe(struct octant *octant, struct point_mass *pm, scalar_t len, struct octant_cache *cache)
 {
 	const auto child_len = len / 2.0;
 

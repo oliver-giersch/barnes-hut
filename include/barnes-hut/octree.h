@@ -12,6 +12,9 @@
 
 typedef uint32_t octant_id_t;
 
+/* The size of the octant arena. */
+extern size_t octant_count;
+
 static constexpr size_t octant_children = 8;
 static constexpr octant_id_t invalid_id = UINT32_MAX;
 
@@ -30,16 +33,17 @@ struct octant {
 
 extern void octant_init(struct octant *octant, struct point_mass *center,
 	scalar_t x, scalar_t y, scalar_t z);
-extern void octant_insert_non_blocking(struct octant *octant,
+extern void octant_insert_threadsafe(struct octant *octant,
 	struct point_mass *pm, scalar_t len, struct octant_cache *cache);
 
 struct octant_arena_node {
 	octant_id_t start, end; // fixme: no way to reset a node
+	octant_id_t idx;
 } numa_aligned;
 
 struct octant_arena {
 	struct octant *memory;
-	octant_id_t len;
+	unsigned node_count;
 	struct octant_arena_node nodes[numa_max_nodes];
 };
 
@@ -56,24 +60,28 @@ struct octant_cache {
 
 static inline void octant_arena_reset(struct octant_arena *arena);
 static inline octant_id_t octant_arena_alloc(struct octant_arena *arena);
+static inline octant_id_t octant_arena_alloc_n_threadsafe(
+	struct octant_arena *arena, unsigned n);
 static inline struct octant *octant_arena_resolve(struct octant_arena *arena,
 	octant_id_t id);
 
 static inline void
 octant_arena_reset(struct octant_arena *arena)
 {
-
+	for (unsigned i = 0; i < arena->node_count; i++) {
+		arena->nodes[i].idx = arena->nodes[i].start;
+	}
 }
 
 static inline octant_id_t
 octant_arena_alloc(struct octant_arena *arena)
 {
 	struct octant_arena_node *node = &arena->nodes[numa_node_id];
-	if (node->start >= node->end)
+	if (node->idx >= node->end)
 		return invalid_id;
 
-	octant_id_t id = node->start;
-	node->start += 1;
+	octant_id_t id = node->idx;
+	node->idx += 1;
 
 	return id;
 }
@@ -82,17 +90,25 @@ static inline octant_id_t
 octant_arena_alloc_n_threadsafe(struct octant_arena *arena, unsigned n)
 {
 	struct octant_arena_node *node = &arena->nodes[numa_node_id];
-	if (node->start >= node->end)
+	octant_id_t atomic *ptr = (octant_id_t atomic *)&node->idx;
+
+	if (atomic_load_explicit(ptr, memory_order_relaxed) >= node->end)
 		return invalid_id;
 
-	octant_id_t atomic *ptr = (octant_id_t atomic *)&node->start;
-	octant_id_t start = atomic_fetch_add_explicit(ptr, n, memory_order_relaxed);
-	octant_id_t end = start + n;
+	octant_id_t id = atomic_fetch_add_explicit(ptr, n, memory_order_relaxed);
+	octant_id_t end = id + n;
 
-	if (start >= end)
+	if (end >= node->end)
 		return invalid_id;
 
-	return start;
+	return id;
+}
+
+static inline struct octant *
+octant_arena_resolve(struct octant_arena *arena, octant_id_t id)
+{
+	// assert(id != invalid_octant && id < ocant_count, "...");
+	return &arena->memory[id];
 }
 
 #endif /* BARNES_HUT_OCTREE_H */

@@ -267,7 +267,7 @@ thread_pool_worker_build(struct thread_pool_worker *worker,
 
 	while (thread_pool_next_batch(worker->pool, particles, &batch)) {
 		for (particle = batch.start; particle < batch.end; particle++) {
-			octant_insert_non_blocking(root, &particle->pm, len, nullptr);
+			octant_insert_threadsafe(root, &particle->pm, len, nullptr);
 			progress_print(&progress);
 		}
 	}
