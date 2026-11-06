@@ -25,3 +25,4 @@ struct octant;
 struct octant_cache;
 
 #endif /* BARNES_HUT_TYPES_H */
+

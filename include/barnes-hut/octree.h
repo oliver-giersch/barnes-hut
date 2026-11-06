@@ -23,21 +23,20 @@ enum octant_flags_t : uint32_t {
 	OCTANT_IS_ABSORBING = 1,
 	OCTANT_IS_NODE = 2,
 };
-
 struct octant {
 	struct point_mass center;
 	struct vec3 corner;
-	enum octant_flags_t is_node;
+	_Atomic enum octant_flags_t is_node;
 	octant_id_t children[octant_children];
 };
 
-extern void octant_init(struct octant *octant, struct point_mass *center,
+extern void octant_init(struct octant *octant, const struct point_mass *center,
 	scalar_t x, scalar_t y, scalar_t z);
 extern void octant_insert_threadsafe(struct octant *octant,
 	struct point_mass *pm, scalar_t len, struct octant_cache *cache);
 
 struct octant_arena_node {
-	octant_id_t start, end; // fixme: no way to reset a node
+	octant_id_t start, end;
 	octant_id_t idx;
 } numa_aligned;
 

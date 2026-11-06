@@ -5,24 +5,24 @@
 #include <threads.h>
 
 #include "barnes-hut/def.h"
-#include "barnes-hut/types.h"
 #include "barnes-hut/physics.h"
+#include "barnes-hut/types.h"
 
 enum thread_state : int {
-	THREAD_IDLE			= 0,
-	THREAD_EXIT			= 1,
-	THREAD_RANDOMIZE	= 2,
-	THREAD_SORT			= 3,
-	THREAD_BUILD		= 4,
-	THREAD_SIMULATE		= 5,
+	THREAD_IDLE = 0,
+	THREAD_EXIT = 1,
+	THREAD_RANDOMIZE = 2,
+	THREAD_SORT = 3,
+	THREAD_BUILD = 4,
+	THREAD_SIMULATE = 5,
 };
 
 struct thread_pool;
 
 struct thread_notify {
-	atomic int	state;
-	cnd_t		cnd;
-	mtx_t		mtx;
+	atomic int state;
+	cnd_t cnd;
+	mtx_t mtx;
 };
 
 // fixme: need one wake/wait counter for the pool
@@ -30,42 +30,42 @@ struct thread_notify {
 
 struct thread_pool_worker {
 	struct {
-		struct thread_pool		*pool;
-		thrd_t					thread;
-		unsigned				idx;
-		bool					is_ready;
+		struct thread_pool *pool;
+		thrd_t thread;
+		unsigned idx;
+		bool is_ready;
 	} aligned(cache_line_size);
 
 	struct {
-		struct thread_notify		state;
+		struct thread_notify state;
 	} aligned(cache_line_size);
 
 	struct {
-		struct particle			*particles;
-		struct octant			*root;
-		size_t					particle_count;
-		error_t					error;
-		scalar_t				len;
+		struct particle *particles;
+		struct octant *root;
+		size_t particle_count;
+		error_t error;
+		scalar_t len;
 	} aligned(cache_line_size);
 };
 
 struct thread_pool {
 	struct {
-		struct thread_pool_worker	main_worker;
-		size_t						step_task_size;
-		size_t						sort_task_size;
+		struct thread_pool_worker main_worker;
+		size_t step_task_size;
+		size_t sort_task_size;
 	} aligned(64);
 
 	struct {
-		struct thread_notify		running_count;
+		struct thread_notify running_count;
 	} aligned(64);
 
 	struct {
-		atomic size_t				work_idx;
+		atomic size_t work_idx;
 	} aligned(64);
 
-	size_t							worker_count;
-	struct thread_pool_worker		*workers[];
+	size_t worker_count;
+	struct thread_pool_worker *workers[];
 };
 
 extern struct thread_pool *thread_pool_init(size_t threads);
