@@ -5,12 +5,30 @@
 #include "barnes-hut/types.h"
 
 struct options {
-    /* The number of discrete steps to simulate (0 = infinity). */
+    /* (t) The number of simulation steps to compute (0 = infinite) */
     unsigned steps;
-    /* The flag for enabling verbose output. */
-    bool verbose;
-    /* The flag for enabling a flat universe. */
+    /* (n) The total number of particles the universe contains.  */
+    unsigned particles;
+    /* (m) The mass of each particle */
+    double mass;
+    /* (r) The initial radius of the universe */
+    scalar_t radius;
+    /* (p) The number of threads to use for the simulation. */
+    unsigned threads;
+    /* (s) The seed for random number generation (0..UINT_MAX) */
+    unsigned seed;
+    /* (o) The step interval for resorting particles (0 = never). */
+    unsigned sort_steps;
+    /* (f) The flag for enabling a flat universe. */
     bool flat;
+    /* (v) The flag for enabling verbose output. */
+    bool verbose;
+    /* (-) ... */
+    scalar_t theta;
+    scalar_t dt;
+    const char *file;
+    bool dump;
+    bool no_render;
 };
 
 /* The global read-only pointer to the options. */

@@ -1,14 +1,13 @@
 Usage: %s [options]
 
 Options:
-    -t [STEPS], --steps=[STEPS]        The number of simulation steps to compute.
+    -t [STEPS], --steps=[STEPS]        The number of simulation steps to compute (0 = infinite).
     -n [PARTICLES], --num=[PARTICLES]  The total number of particles the universe contains.
-    m [MASS], --mass=[MASS]           The initial mass of each particle.
+    -m [MASS], --mass=[MASS]           The mass of each particle.
     -r [RADIUS], --radius=[RADIUS]     The initial radius of the universe.
     -p [THREADS], --threads=[THREADS]  The number of threads to use for the simulation.
     -s [SEED], --seed=[SEED]           The seed for random number generation (0..UINT_MAX).
-    -d [DELAY], --delay=[DELAY]        The delay in ms after each simulation step.
-    -o, --optimize                     The flag for enabling memory hierachy optimizations.
+    -o [STEPS], --optimize=[STEPS]     The step interval for resorting particles (0 = never).
     -f, --flat                         The flag for enabling generation of a flat galaxy in the x/y plane.
     -v, --verbose                      The flag for enabling verbose output.
     -h, --help                         Print this help and exit.

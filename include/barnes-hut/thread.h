@@ -36,17 +36,17 @@ struct thread_pool_worker {
 		bool					is_ready;
 	} aligned(cache_line_size);
 
-	struct thread_notify		state;
+	struct {
+		struct thread_notify		state;
+	} aligned(cache_line_size);
 
 	struct {
 		struct particle			*particles;
 		struct octant			*root;
 		size_t					particle_count;
-		size_t					task_size; // TODO: store in pool?
-		size_t					sort_task_task; // TODO: store in pool?
 		error_t					error;
 		scalar_t				len;
-	};
+	} aligned(cache_line_size);
 };
 
 struct thread_pool {

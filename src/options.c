@@ -27,14 +27,27 @@ extern error_t
 options_parse(int argc, char *argv[argc])
 {
 	enum {
-		OPTION_THETA	= 1000,
+		OPTION_THETA = 1000,
 		OPTION_DT,
 		OPTION_DUMP,
 		OPTION_FILE,
 		OPTION_NO_RENDER
 	};
 
-	static const char *short_opts = "t:n:m:r:p:s:d:hofv";
+	static const char *short_opts = "t:n:m:r:p:s:o:hfv";
+	static const char *arg_strs[] = {
+		['t'] = "steps",
+		['n'] = "num",
+		['m'] = "mass",
+		['r'] = "radius",
+		['p'] = "threads",
+		['s'] = "seed",
+		['o'] = "optimize",
+		[OPTION_THETA] = "theta",
+		[OPTION_DT] = "dt",
+		[OPTION_NO_RENDER] = "no-render",
+	};
+
 	static const struct option long_opts[] = {
 		{ "steps", required_argument, NULL, 't' },
 		{ "num", required_argument, NULL, 'n' },
@@ -42,16 +55,15 @@ options_parse(int argc, char *argv[argc])
 		{ "radius", required_argument, NULL, 'r' },
 		{ "threads", required_argument, NULL, 'p' },
 		{ "seed", required_argument, NULL, 's' },
-		{ "delay", required_argument, NULL, 'd' },
+		{ "optimize", required_argument, NULL, 'o' },
 		{ "help", no_argument, NULL, 'h' },
-		{ "optimize", no_argument, NULL, 'o' },
 		{ "flat", no_argument, NULL, 'f' },
 		{ "verbose", no_argument, NULL, 'v' },
-		{ "theta", required_argument, NULL, OPT_THETA },
-		{ "dt", required_argument, NULL, OPT_DT },
-		{ "file", required_argument, NULL, OPT_FILE },
-		{ "dump", no_argument, NULL, OPT_DUMP },
-		{ "no-render", no_argument, NULL, OPT_NO_RENDER },
+		{ "theta", required_argument, NULL, OPTION_THETA },
+		{ "dt", required_argument, NULL, OPTION_DT },
+		{ "file", required_argument, NULL, OPTION_FILE },
+		{ "dump", no_argument, NULL, OPTION_DUMP },
+		{ "no-render", no_argument, NULL, OPTION_NO_RENDER },
 		{ 0, 0, 0, 0 },
 	};
 
@@ -70,9 +82,15 @@ options_parse(int argc, char *argv[argc])
 
 		switch (opt) {
 		case 't':
-			if ((error = parse_ull(argstrs[opt], optarg, &arg.ull)))
-					goto out;
-			options.steps = (unsigned)arg.ull;
+			if ((error = parse_ull(arg_strs[opt], optarg, &arg.ull)))
+				goto out;
+
+			if (arg.ull > UINT_MAX) {
+				error = EINVAL;
+				goto out;
+			}
+
+			options_storage.steps = (unsigned)arg.ull;
 			break;
 		case 'n':
 			break;
@@ -84,6 +102,11 @@ options_parse(int argc, char *argv[argc])
 			break;
 		}
 	}
+
+out:
+	if (error)
+		print_usage(argv[0]);
+	return (error);
 }
 
 static error_t

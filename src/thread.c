@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <threads.h>
 
-#include "barnes-hut/def.h"
 #include "barnes-hut/octree.h"
 #include "barnes-hut/options.h"
 #include "barnes-hut/physics.h"
@@ -127,7 +126,7 @@ thread_pool_build(struct thread_pool *pool, struct particle particles[],
 {
 	const scalar_t corner = -radius;
 	const scalar_t id = octant_arena_alloc(&octant_arena);
-	const scalar_t root = octant_arena_resolve(&octant_arena, id);
+	struct octant *root = octant_arena_resolve(&octant_arena, id);
 	octant_init(root, &particles[0].pm, corner, corner, corner);
 
 	const scalar_t len = radius * 2.0;

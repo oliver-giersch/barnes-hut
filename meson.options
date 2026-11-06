@@ -1,2 +1,3 @@
 option('double_precision', type: 'boolean', value: false)
+option('numa_aware', type: 'feature', value: 'disabled')
 option('print_progress', type: 'boolean', value: false)
