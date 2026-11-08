@@ -15,7 +15,7 @@ typedef uint32_t octant_id_t;
 /* The size of the octant arena. */
 extern size_t octant_count;
 
-static constexpr size_t octant_children = 8;
+static constexpr unsigned octant_children = 8;
 static constexpr octant_id_t invalid_id = UINT32_MAX;
 
 enum octant_flags_t : uint32_t {
@@ -23,17 +23,23 @@ enum octant_flags_t : uint32_t {
 	OCTANT_IS_ABSORBING = 1,
 	OCTANT_IS_NODE = 2,
 };
+
 struct octant {
 	struct point_mass center;
 	struct vec3 corner;
-	_Atomic enum octant_flags_t is_node;
+	_Atomic enum octant_flags_t flags;
 	octant_id_t children[octant_children];
 };
 
-extern void octant_init(struct octant *octant, const struct point_mass *center,
-	scalar_t x, scalar_t y, scalar_t z);
+extern struct octant *octant_tree_init(
+	const struct particle particles[static particle_count], scalar_t radius);
+extern void octant_insert(struct octant *octant, const struct point_mass *pm,
+	scalar_t len);
 extern void octant_insert_threadsafe(struct octant *octant,
-	struct point_mass *pm, scalar_t len, struct octant_cache *cache);
+	const struct point_mass *pm, scalar_t len, struct octant_cache *cache);
+extern void octant_update_accel(const struct octant *octant,
+	const struct point_mass *pm, scalar_t len, scalar_t theta_threshold,
+	struct vec3 *accel);
 
 struct octant_arena_node {
 	octant_id_t start, end;
@@ -50,7 +56,7 @@ struct octant_arena {
 extern struct octant_arena octant_arena;
 
 /* ... */
-static constexpr size_t octant_cache_len = 32;
+static constexpr unsigned octant_cache_len = 32;
 
 struct octant_cache {
 	size_t idx;
@@ -107,6 +113,8 @@ static inline struct octant *
 octant_arena_resolve(struct octant_arena *arena, octant_id_t id)
 {
 	// assert(id != invalid_octant && id < ocant_count, "...");
+	if (id == invalid_id)
+		return (nullptr);
 	return &arena->memory[id];
 }
 

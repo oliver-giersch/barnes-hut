@@ -56,11 +56,9 @@ static inline struct thread_ctx thread_ctx_decompose(void *ctx);
 
 /* Progress printing */
 
-#if (OPTION_PRINT_PROGRESS == 1)
+#ifdef OPTION_PRINT_PROGRESS
 struct progress_bar {
-	atomic size_t	*global_progress;
-	size_t			local_progress;
-	size_t			step;
+	size_t	step, local_progress;
 };
 #else
 struct progress_bar {
@@ -68,6 +66,9 @@ struct progress_bar {
 };
 #endif /* OPTION_PRINT_PROGRESS */
 
+static void progress_bar_reset(void);
+static struct progress_bar progress_bar_init(void);
+static void progress_bar_destroy(struct progress_bar *bar);
 static void progress_bar_print(struct progress_bar *bar,
 	const struct thread_pool_worker *worker);
 
@@ -262,15 +263,32 @@ static void
 thread_pool_worker_build(struct thread_pool_worker *worker,
 	struct particle particles[], struct octant *root, scalar_t len)
 {
-	struct batch batch;
-	struct particle *particle;
+	struct progress_bar progress = progress_bar_init();
 
+	struct batch batch;
 	while (thread_pool_next_batch(worker->pool, particles, &batch)) {
+		struct particle *particle;
 		for (particle = batch.start; particle < batch.end; particle++) {
 			octant_insert_threadsafe(root, &particle->pm, len, nullptr);
-			progress_print(&progress);
+			progress_bar_print(&progress, worker);
 		}
 	}
+
+	progress_bar_destroy(&progress);
+}
+
+static void
+thread_pool_worker_simulate(struct thread_pool_worker *worker,
+	struct particle particles[], struct octant *root)
+{
+	struct progress_bar progress = progress_bar_init();
+
+	struct batch batch;
+	while (thread_pool_next_batch(worker->pool, particles, &batch)) {
+
+	}
+
+	progress_bar_destroy(&progress);
 }
 
 static bool
@@ -370,14 +388,52 @@ thread_ctx_decompose(void *ctx)
 
 /* Progress */
 
+#ifdef OPTION_PRINT_PROGRESS
+static atomic size_t global_progress = 0;
+#endif /* OPTION_PRINT_PROGRESS */
+
+static void
+progress_bar_reset(void)
+{
+#ifdef OPTION_PRINT_PROGRESS
+	atomic_store_explicit(&global_progress, 0);
+#endif /* OPTION_PRINT_PROGRESS */
+}
+
+static struct progress_bar
+progress_bar_init(void)
+{
+#ifdef OPTION_PRINT_PROGRESS
+	const size_t steps = (particle_count / 10'000 == 0) ? 1 : particle_count / 10'000;
+	return (struct progress_bar){
+		.step = step,
+		.local_progress = 0,
+	};
+#else
+	return (struct progress_bar){};
+#endif /* OPTION_PRINT_PROGRESS */
+}
+
+static void
+progress_bar_destroy(struct progress_bar *bar)
+{
+#ifdef OPTION_PRINT_PROGRESS
+	if (options->verbose && bar->local_progress != 0)
+		atomic_fetch_add_explicit(&global_progress, bar->local_progress,
+			memory_order_relaxed);
+#else
+	(void)bar;
+#endif /* OPTION_PRINT_PROGRESS */
+}
+
 static void
 progress_bar_print(struct progress_bar *bar,
 	const struct thread_pool_worker *worker)
 {
+#ifdef OPTION_PRINT_PROGRESS
 	if (!options->verbose)
 		return;
 
-#if (OPTION_PRINT_PROGRESS == 1)
 	bar->local_progress += 1;
 	if (bar->local_progress < bar->step)
 		return;

@@ -2,7 +2,7 @@
 #define BARNES_HUT_TYPES_H
 
 /* The type representing a coordinate in space. */
-#if (OPTION_DOUBLE_PRECISION == 1)
+#ifdef OPTION_DOUBLE_PRECISION
 typedef float scalar_t;
 #else
 typedef double scalar_t;
@@ -25,4 +25,3 @@ struct octant;
 struct octant_cache;
 
 #endif /* BARNES_HUT_TYPES_H */
-
