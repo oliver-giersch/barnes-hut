@@ -34,9 +34,6 @@ static error_t thread_pool_worker_main(void *arg);
 static void thread_pool_worker_build(struct thread_pool_worker *worker,
 	struct particle particles[], struct octant *root, scalar_t len);
 
-static bool thread_pool_worker_next_batch(struct thread_pool_worker *worker,
-	struct batch *batch);
-
 /* Notify */
 
 static error_t thread_notify_init(struct thread_notify *notify);
@@ -122,14 +119,10 @@ error_exit:
 }
 
 extern scalar_t
-thread_pool_build(struct thread_pool *pool, struct particle particles[],
-	scalar_t radius)
+thread_pool_build(struct thread_pool *pool,
+	struct particle particles[static particle_count], scalar_t radius)
 {
-	const scalar_t corner = -radius;
-	const scalar_t id = octant_arena_alloc(&octant_arena);
-	struct octant *root = octant_arena_resolve(&octant_arena, id);
-	octant_init(root, &particles[0].pm, corner, corner, corner);
-
+	struct octant *octant = octant_tree_init(particles, radius);
 	const scalar_t len = radius * 2.0;
 
 	for (unsigned i = 0; i < pool->worker_count; i++)
@@ -289,31 +282,6 @@ thread_pool_worker_simulate(struct thread_pool_worker *worker,
 	}
 
 	progress_bar_destroy(&progress);
-}
-
-static bool
-thread_pool_worker_next_batch(struct thread_pool_worker *worker,
-	struct batch *batch)
-{
-	assert(worker->is_ready, "");
-
-	const size_t task_size = worker->task_size;
-	const size_t start = atomic_fetch_add_explicit(&worker->pool->work_idx,
-		task_size, memory_order_relaxed);
-
-	if (start > particle_count)
-		return false;
-
-	const size_t end = (start + task_size < particle_count)
-		? start + task_size
-		: particle_count;
-
-	*batch = (struct batch){
-		.start = worker->particles + start,
-		.end = worker->particles + end,
-	};
-
-	return true;
 }
 
 /* Notify */

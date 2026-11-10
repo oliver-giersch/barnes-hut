@@ -1,6 +1,10 @@
 #ifndef BARNES_HUT_DEF_H
 #define BARNES_HUT_DEF_H
 
+#if defined(__x86_64__) || defined(__i386__)
+#include <immintrin.h>
+#endif /* __x86_64__ || __i386__ */
+
 #define atomic _Atomic
 #define likely(cond) __builtin_expect(!!(cond), 1)
 #define unlikely(cond) __builtin_expect(!!(cond), 0)
@@ -31,5 +35,13 @@ constexpr unsigned cache_line_size = 64;
 extern noreturn __panic(const char *file, const char *function, int line,
 	const char *condition, const char *message);
 extern noreturn __abort_oom(const char *file, const char *function, int line);
+
+static inline void
+cpu_relax(void)
+{
+#if defined(__x86_64__) || defined(__i386__)
+	_mm_pause();
+#endif /* __x86_64__ || __i386__ */
+}
 
 #endif /* BARNES_HUT_DEF_H */
