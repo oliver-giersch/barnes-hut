@@ -4,7 +4,7 @@
 #include "barnes-hut/types.h"
 
 #ifdef OPTION_RENDER
-extern int render_main(void); // fixme: arguments?
+extern error_t render_main(void); // fixme: arguments?
 
 extern error_t render_init(void);
 extern void render_destroy(void);
