@@ -179,8 +179,8 @@ octant_update_accel(const struct octant *octant, const struct point_mass *pm,
 		if (unlikely(octant->children[i] == invalid_id))
 			continue;
 
-		const struct octant *child
-			= octant_arena_resolve(&octant_arena, octant->children[i]);
+		const octant_id_t id = octant->children[i];
+		const struct octant *child = octant_arena_resolve(&octant_arena, id);
 		octant_update_accel(child, pm, len / 2.0, theta_threshold / 4.0, accel);
 	}
 }
@@ -424,10 +424,14 @@ octant_arena_alloc_n_threadsafe(struct octant_arena *arena, unsigned n)
 static inline struct octant *
 octant_arena_resolve(struct octant_arena *arena, octant_id_t id)
 {
-	// assert(id != invalid_octant && id < ocant_count, "...");
+#ifdef OPTION_LARGE_SIMULATION
+	return id;
+#else
+	assert(id == invalid_octant || id < ocant_count, "invalid octant ID");
 	if (id == invalid_id)
 		return (nullptr);
 	return &arena->memory[id];
+#endif /* OPTION_LARGE_SIMULATION */
 }
 
 /* Vector */

@@ -9,19 +9,20 @@
 #include "barnes-hut/physics.h"
 #include "barnes-hut/types.h"
 
-#ifdef OPTION_HUGE_SIMULATION
+#ifdef OPTION_LARGE_SIMULATION
 typedef struct octant * octant_id_t;
 static constexpr octant_id_t invalid_id = nullptr;
 #else
 typedef uint32_t octant_id_t;
 static constexpr octant_id_t invalid_id = UINT32_MAX;
-#endif /* OPTION_HUGE_SIMULATION */
+#endif /* OPTION_LARGE_SIMULATION */
 
 /* The size of the particles array. */
 extern size_t particle_count;
 /* The size of the octant arena. */
 extern size_t octant_count;
 
+/* The state flags for an octant. */
 enum octant_flags_t : uint32_t {
 	OCTANT_IS_LEAF = 0,
 	OCTANT_IS_BUSY = 1,
@@ -48,11 +49,13 @@ extern void octant_update_accel(const struct octant *octant,
 	const struct point_mass *pm, scalar_t len, scalar_t theta_threshold,
 	struct vec3 *accel);
 
+/* ... */
 struct octant_arena_node {
 	octant_id_t start, end;
 	octant_id_t idx;
 } numa_aligned;
 
+/* ... */
 struct octant_arena {
 	struct octant *memory;
 	unsigned node_count;
@@ -65,8 +68,10 @@ extern struct octant_arena octant_arena;
 /* ... */
 static constexpr unsigned octant_cache_len = 32;
 
+/* ... */
 struct octant_cache {
 	size_t idx;
 	octant_id_t array[octant_cache_len];
 };
 #endif /* BARNES_HUT_OCTREE_H */
+
