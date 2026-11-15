@@ -1,6 +1,7 @@
 #include "barnes-hut/render.h"
 
-#include <glew/glew.h>
+#include <GL/glew.h>
+#include <SDL3/SDL.h>
 
 #include "barnes-hut/types.h"
 
@@ -10,12 +11,12 @@ static constexpr int width = 1280;
 static constexpr int height = 960;
 
 static constexpr char fragment_shader[] = {
-	#embed "shader/fragment.glsl"
+#embed "shader/fragment.glsl"
 	, '\0'
 };
 
 static constexpr char vertex_shader[] = {
-	#embed "shader/vertex.glsl"
+#embed "shader/vertex.glsl"
 	, '\0'
 };
 
@@ -24,7 +25,7 @@ static struct gl_state {
 	/* Program arguments */
 	GLuint view, radius, axis;
 	GLuint particle_vbo, particle_vao;
-	GLuint axes_vbo, axes_vao
+	GLuint axes_vbo, axes_vao;
 } gl_state;
 
 static error_t render_init_state(void);
@@ -35,25 +36,24 @@ static void render_event_loop(SDL_Window *window,
 extern error_t
 render_main(void)
 {
-	
 }
 
 static error_t
 render_init_state(void)
 {
-	if (!SDL_Init(SDL_INIT_VIDEO)
+	if (!SDL_Init(SDL_INIT_VIDEO))
 		return -1;
 
-	SDL_Window *window = SDL_CreateWindow("barnes-hut", width, height,
-		SDL_WINDOW_OPENGL);
+	SDL_Window *window
+		= SDL_CreateWindow("barnes-hut", width, height, SDL_WINDOW_OPENGL);
 	if (window == nullptr)
 		return -1;
 
-	SDL_GL_Context *context = SDL_GL_CreateContext(window);
+	SDL_GLContext context = SDL_GL_CreateContext(window);
 	if (context == nullptr)
 		goto destroy_window;
 
-	if (glewContextInit != GLEW_OK)
+	if (glewContextInit() != GLEW_OK)
 		goto destroy_context;
 
 destroy_context:
@@ -100,7 +100,7 @@ render_gl_state_init(void)
 	glPointSize(0.5);
 	glEnable(GL_DEPTH_TEST);
 
-	gl_state = (struct gl_state){
+	gl_state = (struct gl_state) {
 		.program = program,
 		.view = view,
 		.radius = radius,
@@ -149,9 +149,7 @@ render_link_program(void)
 
 	GLint ok;
 	glGetProgramiv(program, GL_LINK_STATUS, &ok);
-	if (ok == GL_FALSE) {
-	
-	}
+	if (ok == GL_FALSE) { }
 
 	return (gl_error_t)program;
 }
@@ -163,7 +161,7 @@ render_compile_shader(GLenum shader_type, const char source[])
 	if (shader == 0)
 		return -1;
 
-	glShaderSource(shader, 1, source, nullptr); //fixme: errno?
+	glShaderSource(shader, 1, source, nullptr); // fixme: errno?
 	glCompileShader(shader);
 
 	GLint ok = 0;
@@ -174,7 +172,6 @@ render_compile_shader(GLenum shader_type, const char source[])
 	}
 
 delete_shader:
-	
 }
 
 static void

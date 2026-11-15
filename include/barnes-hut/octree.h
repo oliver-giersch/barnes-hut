@@ -10,15 +10,13 @@
 #include "barnes-hut/types.h"
 
 #ifdef OPTION_LARGE_SIMULATION
-typedef struct octant * octant_id_t;
+typedef struct octant *octant_id_t;
 static constexpr octant_id_t invalid_id = nullptr;
 #else
 typedef uint32_t octant_id_t;
 static constexpr octant_id_t invalid_id = UINT32_MAX;
 #endif /* OPTION_LARGE_SIMULATION */
 
-/* The size of the particles array. */
-extern size_t particle_count;
 /* The size of the octant arena. */
 extern size_t octant_count;
 
@@ -74,4 +72,3 @@ struct octant_cache {
 	octant_id_t array[octant_cache_len];
 };
 #endif /* BARNES_HUT_OCTREE_H */
-

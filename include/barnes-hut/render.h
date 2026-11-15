@@ -6,26 +6,20 @@
 #ifdef OPTION_RENDER
 extern error_t render_main(void); // fixme: arguments?
 
-extern error_t render_init(void);
-extern void render_destroy(void);
-extern bool render_scene(const struct particle particles[], scalar_t radius);
 extern bool render_wait(void);
-extern bool render_wake(void);
+extern bool render_wake(scalar_t radius);
 #else
-static inline error_t
-render_init(void)
-{
-	return 0;
-}
-
-static inline void
-render_destroy(void) {}
-
 static inline bool
-render_scene(const struct particle particles[], scalar_t radius)
+render_wait(void)
 {
 	return true;
 }
-#endif /* OPTION_RENDER */
 
+static inline bool
+render_wake(scalar_t radius)
+{
+	(void)radius;
+	return true;
+}
+#endif /* OPTION_RENDER */
 #endif /* BARNES_HUT_RENDER_H */

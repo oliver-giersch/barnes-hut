@@ -16,6 +16,9 @@ struct point_mass {
 	mass_t mass;
 };
 
+/* The size of the particles array. */
+extern size_t particle_count;
+
 /* A point mass moving in 3D-space with an associated velocity. */
 struct particle {
 	struct point_mass pm;
