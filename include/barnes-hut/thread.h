@@ -69,7 +69,7 @@ struct thread_pool {
 };
 
 extern struct thread_pool *thread_pool_init(size_t threads);
-extern void thread_pool_deinit(struct thread_pool *pool);
+extern void thread_pool_destroy(struct thread_pool *pool);
 extern void thread_pool_randomize(struct thread_pool *pool,
 	struct particle particles[], scalar_t radius);
 extern scalar_t thread_pool_build(struct thread_pool *pool,

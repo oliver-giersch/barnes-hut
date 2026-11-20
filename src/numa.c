@@ -37,8 +37,8 @@ numa_init(unsigned max_threads, enum numa_policy policy,
 		goto destroy_topology;
 	}
 
-	const int node_count
-		= hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_NUMANODE);
+	const int node_count = hwloc_get_nbobjs_by_type(topology,
+		HWLOC_OBJ_NUMANODE);
 	if (unlikely(node_count <= 0) || node_count > (int)numa_max_nodes) {
 		error = (node_count <= 0) ? -ENODEV : -ENOTSUP;
 		goto destroy_topology;
@@ -57,16 +57,16 @@ numa_init(unsigned max_threads, enum numa_policy policy,
 	if (error == -ENOMEM)
 		goto destroy_resources;
 
-	const hwloc_const_cpuset_t all_cpuset
-		= hwloc_topology_get_allowed_cpuset(topology);
+	const hwloc_const_cpuset_t all_cpuset = hwloc_topology_get_allowed_cpuset(
+		topology);
 	hwloc_bitmap_copy(available_cpuset, all_cpuset);
 	if (!allow_hyperthreads)
 		hwloc_bitmap_singlify_per_core(topology, available_cpuset, 0);
 
 	unsigned available_threads = 0;
 	for (int i = 0; i < node_count; i++) {
-		hwloc_obj_t node
-			= hwloc_get_obj_by_type(topology, HWLOC_OBJ_NUMANODE, i);
+		hwloc_obj_t node = hwloc_get_obj_by_type(topology,
+			HWLOC_OBJ_NUMANODE, i);
 		hwloc_bitmap_and(node_cpusets[i], available_cpuset, node->cpuset);
 		available_threads += (unsigned)hwloc_bitmap_weight(node_cpusets[i]);
 	}
@@ -76,8 +76,9 @@ numa_init(unsigned max_threads, enum numa_policy policy,
 		goto destroy_resources;
 	}
 
-	cpu_count
-		= (max_threads < available_threads) ? max_threads : available_threads;
+	cpu_count = (max_threads < available_threads)
+		? max_threads
+		: available_threads;
 	cpu_info = calloc(cpu_count, sizeof(struct numa_cpu_info));
 	if (cpu_info == nullptr) {
 		error = -ENOMEM;
@@ -89,9 +90,11 @@ numa_init(unsigned max_threads, enum numa_policy policy,
 		if (policy == NUMA_ROUND_ROBIN)
 			n = (i / share) % node_count;
 
-		for (int j = 0; j < node_count && hwloc_bitmap_iszero(node_cpusets[j]);
-			j++)
+		for (int j = 0; j < node_count; j++) {
+			if (hwloc_bitmap_iszero(node_cpusets[j])
+				continue;
 			n = (n + 1) % node_count;
+		}
 
 		const int cpu = hwloc_bitmap_first(node_cpusets[n]);
 		hwloc_bitmap_clr(node_cpusets[n], cpu);
@@ -120,8 +123,8 @@ extern error_t
 _numa_init(unsigned max_threads, enum numa_policy policy, bool use_hyperthreads)
 {
 
-	hwloc_cpuset_t all_cpus
-		= hwloc_bitmap_dup(hwloc_topology_get_allowed_cpuset(topology));
+	hwloc_cpuset_t all_cpus = hwloc_bitmap_dup(
+		hwloc_topology_get_allowed_cpuset(topology));
 	if (all_cpus == nullptr)
 		goto destroy_topology;
 	if (!use_hyperthreads)
@@ -136,8 +139,8 @@ _numa_init(unsigned max_threads, enum numa_policy policy, bool use_hyperthreads)
 	unsigned quota = (policy == NUMA_ROUND_ROBIN) ? cpu_count / numa_nodes : 0;
 
 	for (int i = 0; i < numa_nodes; i++) {
-		const hwloc_obj_t node
-			= hwloc_get_obj_by_type(topology, HWLOC_OBJ_NUMANODE, i);
+		const hwloc_obj_t node = hwloc_get_obj_by_type(topology,
+			HWLOC_OBJ_NUMANODE, i);
 		hwloc_bitmap_t cpuset = hwloc_bitmap_dup(node->cpuset);
 		if (cpuset == nullptr)
 			goto gay_sex;
@@ -191,8 +194,9 @@ _numa_init(unsigned max_threads, enum numa_policy policy, bool use_hyperthreads)
 		hwloc_bitmap_clr(numa_cpusets[numa_node], cpu);
 	}
 
-	const hwloc_obj_type_t type
-		= (use_hyperthreads) ? HWLOC_OBJ_PU : HWLOC_OBJ_CORE;
+	const hwloc_obj_type_t type = (use_hyperthreads)
+		? HWLOC_OBJ_PU
+		: HWLOC_OBJ_CORE;
 	if ((cpu_count = hwloc_get_nbobjs_by_type(topology, type)) <= -1) {
 		error = -ENODEV;
 		goto destroy_topology;
@@ -221,8 +225,8 @@ _numa_init(unsigned max_threads, enum numa_policy policy, bool use_hyperthreads)
 		}
 	}
 
-	const int numa_nodes
-		= hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_NUMANODE);
+	const int numa_nodes = hwloc_get_nbobjs_by_type(topology,
+		HWLOC_OBJ_NUMANODE);
 	for (int i = 0; i < cpu_count; i++) {
 		hwloc_bitmap_singlify_per_core(hwloc_topology_t topology,
 			hwloc_bitmap_t cpuset, unsigned int which)

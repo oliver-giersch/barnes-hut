@@ -10,14 +10,13 @@ typedef long gl_error_t;
 static constexpr int width = 1280;
 static constexpr int height = 960;
 
+// FIXME: skip suffix and pass sizeof explicitly?
 static constexpr char fragment_shader[] = {
-#embed "shader/fragment.glsl"
-	, '\0'
+#embed "shader/fragment.glsl" suffix(,0) if_empty(0)
 };
 
 static constexpr char vertex_shader[] = {
-#embed "shader/vertex.glsl"
-	, '\0'
+#embed "shader/vertex.glsl" suffix(, 0) if_empty(0)
 };
 
 static struct gl_state {

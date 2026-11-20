@@ -118,6 +118,18 @@ error_exit:
 	return nullptr;
 }
 
+extern void
+thread_pool_destroy(struct thread_pool *pool)
+{
+	/*
+	 * TODO:
+	 * - join all worker threads
+	 * - propagate any errors?
+	 */
+}
+
+// FIXME: need to pin the main thread somewhere ..
+
 extern scalar_t
 thread_pool_build(struct thread_pool *pool,
 	struct particle particles[static particle_count], scalar_t radius)
