@@ -11,5 +11,6 @@ BinPackArguments: true
 BinPackParameters: true
 ColumnLimit: 80
 PointerAlignment: Right
-BreakBeforeTernaryOperators: true
+BreakBeforeBinaryOperators: None
+PenaltyBreakAssignment: 100
 AlwaysBreakBeforeMultilineStrings: true

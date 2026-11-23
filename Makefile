@@ -1,10 +1,27 @@
+include options.mk
+
 CFLAGS := --std=c23 -Werror -Wall -Wpedantic -MMD
+CDEFS  := -D_DEFAULT_SOURCE
 
-SRC := src/main.c src/physics.c src/thread.c
+OPTFLAGS := -O3 -march=native -mtune=native -fno-math-errno -fno-trapping-math
+
+SRC := src/main.c src/options.c src/physics.c src/thread.c
 INC := -I./include
+LIB := #-lpthread -lm? (-lhwloc)
+OBJ := $(SRC:src/%.c=obj/%.o)
+DEP := $(SRC:src/%.c=obj/%.d)
 
-OBJ := $(SRC:%.c=%.o)
-DEP := $(SRC:%.c=%.d)
+all: barnes-hut
 
-$(OBJ): %.o: %.c
+barnes-hut: $(OBJ) Makefile
+	$(LD) $(LDFLAGS) $(OBJ) $(LIB) -o $@
+
+$(OBJ): obj/%.o: src/%.c | obj
 	$(CC) $(CFLAGS) $(INC) $(CDEFS) -c $< -o $@
+
+obj:
+	mkdir -p $@
+
+-include $(DEP)
+
+.PHONY: all clean

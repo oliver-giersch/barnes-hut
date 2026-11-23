@@ -14,7 +14,8 @@ enum thread_state : int {
 	THREAD_RANDOMIZE = 2,
 	THREAD_SORT = 3,
 	THREAD_BUILD = 4,
-	THREAD_SIMULATE = 5,
+	THREAD_RECENTER = 5,
+	THREAD_SIMULATE = 6,
 };
 
 struct thread_pool;

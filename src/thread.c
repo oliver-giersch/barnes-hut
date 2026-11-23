@@ -21,12 +21,14 @@ static void thread_pool_wait_done(struct thread_pool *pool);
 static void thread_pool_notify_done(struct thread_pool *pool);
 
 struct batch {
-	struct particle	*start;
-	struct particle	*end;
+	struct particle *start;
+	struct particle *end;
 };
 
 static bool thread_pool_next_batch(struct thread_pool *pool,
 	struct particle particles[], struct batch *batch);
+static bool thread_pool_next_subtree(struct thread_pool *pool,
+	uint8_t *sub_tree);
 
 /* Worker thread */
 
@@ -44,8 +46,8 @@ static void thread_notify_wake_all(struct thread_notify *notify);
 /* Utility */
 
 struct thread_ctx {
-	struct thread_pool	*pool;
-	unsigned			idx;
+	struct thread_pool *pool;
+	unsigned idx;
 };
 
 static inline void *thread_ctx_compose(struct thread_pool *pool, unsigned idx);
@@ -55,7 +57,7 @@ static inline struct thread_ctx thread_ctx_decompose(void *ctx);
 
 #ifdef OPTION_PRINT_PROGRESS
 struct progress_bar {
-	size_t	step, local_progress;
+	size_t step, local_progress;
 };
 #else
 struct progress_bar {
@@ -134,7 +136,7 @@ extern scalar_t
 thread_pool_build(struct thread_pool *pool,
 	struct particle particles[static particle_count], scalar_t radius)
 {
-	struct octant *octant = octant_tree_init(particles, radius);
+	struct octant *root = octant_tree_init(particles, radius);
 	const scalar_t len = radius * 2.0;
 
 	for (unsigned i = 0; i < pool->worker_count; i++)
@@ -148,6 +150,11 @@ thread_pool_build(struct thread_pool *pool,
 			return FP_NAN; // FIXME: return int/error
 
 	// FIXME: (parallel?) update center?
+	pool->work_idx = 0;
+	thread_pool_run(pool, THREAD_RECENTER);
+
+	/* Recenter the uppermost level. */
+	(void)octant_recenter(root);
 }
 
 static void
@@ -175,8 +182,10 @@ thread_pool_wait_done(struct thread_pool *pool)
 static void
 thread_pool_notify_done(struct thread_pool *pool)
 {
-	const int running_count = atomic_fetch_sub_explicit(
-		&pool->running_count.state, 1, memory_order_release) - 1;
+	const int running_count
+		= atomic_fetch_sub_explicit(&pool->running_count.state, 1,
+			  memory_order_release)
+		- 1;
 	assert(running_count >= 0, "...");
 	if (running_count == 0)
 		thread_notify_wake_one(&pool->running_count);
@@ -187,20 +196,32 @@ thread_pool_next_batch(struct thread_pool *pool, struct particle particles[],
 	struct batch *batch)
 {
 	const size_t task_size = pool->step_task_size;
-	const size_t start = atomic_fetch_add_explicit(&pool->work_idx,
-		task_size, memory_order_relaxed);
+	const size_t start = atomic_fetch_add_explicit(&pool->work_idx, task_size,
+		memory_order_relaxed);
 
 	if (start > particle_count)
 		return false;
 
-	const size_t end = (start + task_size < particle_count)
-		? start + task_size
-		: particle_count;
+	const size_t end = (start + task_size < particle_count) ? start + task_size
+															: particle_count;
 
-	*batch = (struct batch){
+	*batch = (struct batch) {
 		.start = particles + start,
 		.end = particles + end,
 	};
+
+	return true;
+}
+
+static bool
+thread_pool_next_subtree(struct thread_pool *pool, uint8_t *sub_tree)
+{
+	const size_t next
+		= atomic_fetch_add_explicit(&pool->work_idx, 1, memory_order_relaxed);
+	if (next >= octant_children * octant_children)
+		return false;
+
+	*sub_tree = (uint8_t)next;
 
 	return true;
 }
@@ -228,14 +249,13 @@ thread_pool_worker_main(void *arg)
 	pool->workers[idx] = &worker;
 	thread_pool_notify_done(pool);
 
-
 	// atomic release-store
 	// futex_wake_one
 
 	// then loop forever, waiting for tasks
 	while (true) {
-		const int state = atomic_load_explicit(&worker.state.state,
-			memory_order_acquire);
+		const int state
+			= atomic_load_explicit(&worker.state.state, memory_order_acquire);
 		if (state == THREAD_IDLE) {
 			thread_notify_wait(&worker.state, THREAD_IDLE);
 			continue;
@@ -255,8 +275,6 @@ thread_pool_worker_main(void *arg)
 			;
 		else
 			__builtin_unreachable();
-
-
 	}
 
 out:
@@ -283,15 +301,22 @@ thread_pool_worker_build(struct thread_pool_worker *worker,
 }
 
 static void
+thread_pool_worker_recenter(struct thread_pool_worker *worker,
+	struct octant *root)
+{
+	uint8_t sub_tree;
+	while (thread_pool_next_subtree(worker->pool, &sub_tree))
+		octant_recenter_subtree(root, sub_tree);
+}
+
+static void
 thread_pool_worker_simulate(struct thread_pool_worker *worker,
 	struct particle particles[], struct octant *root)
 {
 	struct progress_bar progress = progress_bar_init();
 
 	struct batch batch;
-	while (thread_pool_next_batch(worker->pool, particles, &batch)) {
-
-	}
+	while (thread_pool_next_batch(worker->pool, particles, &batch)) { }
 
 	progress_bar_destroy(&progress);
 }
@@ -344,10 +369,10 @@ thread_notify_wake_all(struct thread_notify *notify)
 
 /* Utility */
 
-static inline void
-*thread_ctx_compose(struct thread_pool *pool, unsigned idx)
+static inline void *
+thread_ctx_compose(struct thread_pool *pool, unsigned idx)
 {
-	//assert(idx < thread_pool_alignment);
+	// assert(idx < thread_pool_alignment);
 	uintptr_t composed = (uintptr_t)pool;
 	composed |= (uintptr_t)idx;
 
@@ -358,7 +383,7 @@ static inline struct thread_ctx
 thread_ctx_decompose(void *ctx)
 {
 	uintptr_t addr = (uintptr_t)ctx;
-	struct thread_ctx thread_ctx =  {
+	struct thread_ctx thread_ctx = {
 		.pool = (struct thread_pool *)(addr & ~pool_mask),
 		.idx = (unsigned)(addr & pool_mask),
 	};
@@ -384,13 +409,14 @@ static struct progress_bar
 progress_bar_init(void)
 {
 #ifdef OPTION_PRINT_PROGRESS
-	const size_t steps = (particle_count / 10'000 == 0) ? 1 : particle_count / 10'000;
-	return (struct progress_bar){
+	const size_t steps
+		= (particle_count / 10'000 == 0) ? 1 : particle_count / 10'000;
+	return (struct progress_bar) {
 		.step = step,
 		.local_progress = 0,
 	};
 #else
-	return (struct progress_bar){};
+	return (struct progress_bar) { };
 #endif /* OPTION_PRINT_PROGRESS */
 }
 

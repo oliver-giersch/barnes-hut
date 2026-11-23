@@ -25,6 +25,7 @@ enum octant_flags_t : uint32_t {
 	OCTANT_IS_LEAF = 0,
 	OCTANT_IS_BUSY = 1,
 	OCTANT_IS_NODE = 2,
+	OCTANT_IS_NODE_RECENTERED = 3
 };
 
 static constexpr unsigned octant_children = 8;
@@ -32,7 +33,7 @@ static constexpr unsigned octant_children = 8;
 struct octant {
 	struct point_mass center;
 	struct vec3 corner;
-	_Atomic enum octant_flags_t flags;
+	enum octant_flags_t flags;
 	octant_id_t children[octant_children];
 };
 
@@ -42,7 +43,12 @@ extern void octant_insert(struct octant *octant, const struct point_mass *pm,
 	scalar_t len);
 extern void octant_insert_threadsafe(struct octant *octant,
 	const struct point_mass *pm, scalar_t len, struct octant_cache *cache);
-extern struct vec3 octant_update_center(struct octant *octant);
+/*
+ * Re-centers this octant alongside all of its children and returns its
+ * accumlated mass-moment.
+ */
+extern struct vec3 octant_recenter(struct octant *octant);
+extern void octant_recenter_subtree(struct octant *octant, uint8_t sub_tree);
 extern void octant_update_accel(const struct octant *octant,
 	const struct point_mass *pm, scalar_t len, scalar_t theta_threshold,
 	struct vec3 *accel);
