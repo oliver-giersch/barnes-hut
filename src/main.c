@@ -123,6 +123,12 @@ run_simulation(void *args)
 	unsigned step = 0;
 	while (has_next_step(step)) {
 		for (unsigned step = 0; has_next_step(step); step++) {
+			long sort_us = 0;
+			if (options->sort_steps != 0 && step % options->sort_steps == 0) {
+				sort_particles(pool, particles, &sort_us);
+				print_sort(sort_us);
+			}
+
 			long build_us;
 			build_tree(pool, particles, radius, &build_us);
 
