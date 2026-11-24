@@ -69,6 +69,9 @@ struct octant_arena {
 /* The global octant arena. */
 extern struct octant_arena octant_arena;
 
+extern void octant_arena_init(struct octant_arena *arena,
+	struct octant memory[static octant_count]);
+
 /* ... */
 static constexpr unsigned octant_cache_len = 32;
 

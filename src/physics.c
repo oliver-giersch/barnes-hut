@@ -7,6 +7,7 @@
 
 #include "barnes-hut/def.h"
 #include "barnes-hut/futex.h"
+#include "barnes-hut/numa.h"
 #include "barnes-hut/octree.h"
 #include "barnes-hut/types.h"
 
@@ -14,6 +15,9 @@ static constexpr scalar_t EPSILON = 1e-6;
 static const struct vec3 zero_vec = { 0.0, 0.0, 0.0 };
 
 /* Octant */
+
+#define octant_flags(octant) ((atomic enum octant_flags_t *)&(octant)->flags)
+#define octant_flags_uint32(octant) ((atomic_uint32_t *)&(octant)->flags)
 
 struct octant_insertion;
 
@@ -25,12 +29,6 @@ static void octant_insert_leaf(struct octant *octant,
 	const struct point_mass *pm, const struct octant_insertion *insertion);
 static inline bool octant_is_leaf(const struct octant *octant);
 static inline bool octant_is_recentered(const struct octant *octant);
-static inline atomic enum octant_flags_t *octant_flags(struct octant *octant);
-
-#define octant_child_threadsafe(octant, idx)                                   \
-	(atomic octant_id_t *)&(octant)->children[(idx)]
-#define octant_flags(octant) ((atomic enum octant_flags_t *)&(octant)->flags)
-#define octant_flags_uint32(octant) ((atomic_uint32_t *)&(octant)->flags)
 
 static void octant_insert_child_threadsafe(struct octant *octant,
 	const struct point_mass *pm, scalar_t child_len,
@@ -45,6 +43,8 @@ static inline bool octant_is_leaf_threadsafe(const struct octant *octant);
 
 static inline bool octant_absorbs(const struct octant *octant,
 	const struct point_mass *pm, scalar_t child_len);
+static inline atomic octant_id_t *octant_child_threadsafe(struct octant *octant,
+	uint8_t idx);
 
 /* Octant insertion */
 
@@ -100,6 +100,9 @@ extern struct octant *
 octant_tree_init(const struct particle particles[static particle_count],
 	scalar_t radius)
 {
+	/* Reset the global arena from the previous run. */
+	octant_arena_reset(&octant_arena);
+
 	const octant_id_t id = octant_arena_alloc(&octant_arena);
 	if (unlikely(id == invalid_id))
 		abort_oom();
@@ -294,14 +297,6 @@ octant_is_recentered(const struct octant *octant)
 	return flags == OCTANT_IS_NODE_RECENTERED;
 }
 
-static inline bool
-octant_absorbs(const struct octant *octant, const struct point_mass *pm,
-	scalar_t child_len)
-{
-	return scalar_eql(child_len, 0.0) ||
-		vec3_eql(&octant->center.pos, &pm->pos);
-}
-
 static void
 octant_insert_child_threadsafe(struct octant *octant,
 	const struct point_mass *pm, scalar_t child_len, struct octant_cache *cache)
@@ -449,6 +444,20 @@ octant_insertion_prepare(const struct octant *octant,
 	return insertion;
 }
 
+static inline bool
+octant_absorbs(const struct octant *octant, const struct point_mass *pm,
+	scalar_t child_len)
+{
+	return scalar_eql(child_len, 0.0) ||
+		vec3_eql(&octant->center.pos, &pm->pos);
+}
+
+static inline atomic octant_id_t
+*octant_child_threadsafe(struct octant *octant, uint8_t idx)
+{
+	return (atomic octant_id_t *)&(octant)->children[(idx)];
+}
+
 /* Octant cache */
 
 static inline octant_id_t
@@ -472,6 +481,21 @@ octant_cache_drop_last(struct octant_cache *cache)
 }
 
 /* Octant arena */
+
+extern void
+octant_arena_init(struct octant_arena *arena,
+	struct octant memory[static octant_count])
+{
+	arena->memory = memory;
+	arena->node_count = numa_node_count;
+
+	const size_t octants_per_node = octant_count / numa_node_count;
+	for (unsigned i = 0; i < numa_node_count; i++) {
+		arena->nodes[i].start = octants_per_node * i;
+		arena->nodes[i].end = arena->nodes[i].start + octants_per_node;
+		arena->nodes[i].idx = 0;
+	}
+}
 
 static inline void
 octant_arena_reset(struct octant_arena *arena)

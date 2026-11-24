@@ -3,8 +3,13 @@
 #include <threads.h>
 #include <time.h>
 
+#include <sys/mman.h>
+
 #include "barnes-hut/def.h"
+#include "barnes-hut/numa.h"
+#include "barnes-hut/octree.h"
 #include "barnes-hut/options.h"
+#include "barnes-hut/physics.h"
 #include "barnes-hut/render.h"
 #include "barnes-hut/thread.h"
 #include "barnes-hut/types.h"
@@ -15,13 +20,18 @@ struct context {
 	scalar_t radius;
 };
 
+/* The virtual memory range base start (16 TiB). */
+static constexpr uintptr_t vm_range_start = 0x0000100000000000ULL;
+/* The virtual memory range end start (65536 TiB). */
+static constexpr uintptr_t vm_range_end = 0x0000800000000000ULL;
+
 static error_t run_simulation(void *args);
 static void build_tree(struct thread_pool *pool,
 	const struct particle particles[static particle_count], scalar_t radius,
 	long *build_us);
 static scalar_t simulate(struct thread_pool *pool, long *simulate_us);
-static inline bool has_next_step(unsigned step);
-static inline long tv_us_diff(const struct timespec *start, const struct *end);
+/* Allocates `size` bytes in an exclusive 16TiB range of virtual memory. */
+static void *mmap_memory(size_t size, error_t *error);
 
 static void print_build_options(void);
 static void print_options(void);
@@ -29,21 +39,44 @@ static void print_build(unsigned step, scalar_t radius, long build_us,
 	long simulate_us);
 static void print_step(unsigned step, long build_us, long simulate_us);
 
+static inline size_t universe_size(size_t particles, unsigned threads);
+static inline bool has_next_step(unsigned step);
+static inline long tv_us_diff(const struct timespec *start,
+	const struct timespec *end);
+
 extern int
 main(int argc, char *argv[static argc])
 {
 	error_t error;
 
-	error = options_parse(argc, argv);
-	if (error == ERROR_EARLY_EXIT)
+	/* Parse program options in argv. */
+	if ((error = options_parse(argc, argv)) == ERROR_EXIT_EARLY)
 		return 0;
 	else if (error != 0)
 		return error;
 
-	if ((error = numa_init(options->threads, false)) < 0)
+	/* Determine NUMA topology (if enabled). */
+	if ((error = numa_init(options->threads, NUMA_ROUND_ROBIN, false)) < 0)
 		return error;
 	const unsigned threads = (unsigned)error;
 
+	/* Allocate (mmap) particle memory. */
+	particle_count = options->particles;
+	struct particle *particles = mmap_memory(particle_count, &error);
+	if (particles == nullptr)
+		return error;
+
+	/* Allocate (mmap) octant memory. */
+	const size_t arena_size = universe_size(particle_count, threads);
+	struct octant *octants = mmap_memory(arena_size, &error);
+	if (octants == nullptr)
+		return error;
+
+	/* Initialize the global octant bump allocator. */
+	octant_count = arena_size;
+	octant_arena_init(&octant_arena, octants);
+
+	/* Initialize the thread pool. */
 	struct thread_pool *pool = thread_pool_init(threads);
 	if (pool == nullptr)
 		goto destroy_numa;
@@ -135,10 +168,49 @@ simulate(struct thread_pool *pool, long *simulate_us)
 	return radius;
 }
 
+static void *
+mmap_memory(size_t size, error_t *error)
+{
+	static uintptr_t next_addr = vm_range_start;
+	uintptr_t addr;
+
+	*error = ENOMEM;
+	for (addr = next_addr; addr <= vm_range_end; addr += vm_range_start) {
+		void *ptr = mmap((void *)addr, size, PROT_READ | PROT_WRITE,
+			MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+
+		if (ptr != MAP_FAILED) {
+			next_addr = addr + vm_range_start;
+			*error = 0;
+			return ptr;
+		}
+
+		*error = errno;
+	}
+
+	return nullptr;
+}
+
+static inline size_t
+universe_size(size_t particles, unsigned threads)
+{
+	const size_t min_size = threads * octant_cache_len;
+	const size_t max_size = octant_arena_max_size;
+	const size_t size = (particles < particles * 3)
+		? particles * 3
+		: max_size;
+
+	if (size < min_size)
+		return min_size;
+	if (size > max_size)
+		return max_size;
+	return size;
+}
+
 static inline bool
 has_next_step(unsigned step)
 {
-	return options->steps == 0 || step < options->steps
+	return options->steps == 0 || step < options->steps;
 }
 
 static inline long

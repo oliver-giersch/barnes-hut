@@ -5,6 +5,7 @@
 #include <threads.h>
 
 #include "barnes-hut/def.h"
+#include "barnes-hut/numa.h"
 #include "barnes-hut/physics.h"
 #include "barnes-hut/types.h"
 
@@ -61,9 +62,15 @@ struct thread_pool {
 		struct thread_notify running_count;
 	} aligned(64);
 
+	// FIXME: remove
 	struct {
 		atomic size_t work_idx;
 	} aligned(64);
+
+	struct {
+		atomic size_t work_idx;
+		size_t max;
+	} aligned(64) task_nodes[numa_max_nodes];
 
 	size_t worker_count;
 	struct thread_pool_worker *workers[];
@@ -72,9 +79,9 @@ struct thread_pool {
 extern struct thread_pool *thread_pool_init(size_t threads);
 extern void thread_pool_destroy(struct thread_pool *pool);
 extern void thread_pool_randomize(struct thread_pool *pool,
-	struct particle particles[], scalar_t radius);
+	struct particle particles[static particle_count], scalar_t radius);
 extern scalar_t thread_pool_build(struct thread_pool *pool,
-	struct particle particles[], scalar_t radius);
+	struct particle particles[static particle_count], scalar_t radius);
 extern scalar_t thread_pool_simulate(struct thread_pool *pool);
 
 #endif /* BARNES_HUT_THREAD_H */

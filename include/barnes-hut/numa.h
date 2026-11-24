@@ -17,6 +17,7 @@ enum numa_policy {
 
 static constexpr size_t numa_max_nodes = 8;
 
+extern unsigned numa_node_count;
 extern thread_local unsigned numa_node_id;
 
 extern error_t numa_init(unsigned threads, enum numa_policy policy,
@@ -27,6 +28,7 @@ extern void numa_destroy(void);
 #define numa_aligned
 
 static constexpr size_t numa_max_nodes = 1;
+static constexpr unsigned numa_node_count = numa_max_nodes;
 static constexpr unsigned numa_node_id = 0;
 
 static inline error_t
