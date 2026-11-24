@@ -11,10 +11,16 @@
 
 #ifdef OPTION_LARGE_SIMULATION
 typedef struct octant *octant_id_t;
+typedef ptrdiff_t octant_extent_t;
+
+static constexpr size_t octant_arena_max_size = ~((size_t)0);
 static constexpr octant_id_t invalid_id = nullptr;
 #else
 typedef uint32_t octant_id_t;
-static constexpr octant_id_t invalid_id = UINT32_MAX;
+typedef uint32_t octant_extent_t;
+
+static constexpr size_t octant_arena_max_size = UINT32_MAX;
+static constexpr octant_id_t octant_invalid_id = UINT32_MAX;
 #endif /* OPTION_LARGE_SIMULATION */
 
 /* The size of the octant arena. */
@@ -56,7 +62,10 @@ extern void octant_update_accel(const struct octant *octant,
 /* ... */
 struct octant_arena_node {
 	octant_id_t start, end;
-	octant_id_t idx;
+	/* The octant node's extent. */
+	octant_extent_t len;
+	/* The index relative to the node's start. */
+	octant_extent_t idx;
 } numa_aligned;
 
 /* ... */

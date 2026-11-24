@@ -13,6 +13,7 @@
 #define aligned(align) __attribute__((aligned((align))))
 #define printf_like __attribute__((format(printf, 1, 2)))
 #define noreturn void __attribute__((__noreturn__))
+#define unreachable() __builtin_unreachable()
 #define unused __attribute__((unused))
 
 /* Build options */

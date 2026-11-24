@@ -21,6 +21,8 @@ static const struct vec3 zero_vec = { 0.0, 0.0, 0.0 };
 
 struct octant_insertion;
 
+/* Octant insertion */
+
 static void octant_init(struct octant *octant, const struct point_mass *center,
 	struct vec3 corner);
 static void octant_insert_child(struct octant *octant,
@@ -28,7 +30,8 @@ static void octant_insert_child(struct octant *octant,
 static void octant_insert_leaf(struct octant *octant,
 	const struct point_mass *pm, const struct octant_insertion *insertion);
 static inline bool octant_is_leaf(const struct octant *octant);
-static inline bool octant_is_recentered(const struct octant *octant);
+
+/* Octant insertion (threadsafe) */
 
 static void octant_insert_child_threadsafe(struct octant *octant,
 	const struct point_mass *pm, scalar_t child_len,
@@ -40,11 +43,12 @@ static inline bool octant_try_convert_leaf_threadsafe(struct octant *octant);
 static inline bool octant_try_absorb_threadsafe(struct octant *octant,
 	const struct point_mass *pm, scalar_t child_len);
 static inline bool octant_is_leaf_threadsafe(const struct octant *octant);
+static inline atomic octant_id_t *octant_child_threadsafe(struct octant *octant,
+	uint8_t idx);
 
 static inline bool octant_absorbs(const struct octant *octant,
 	const struct point_mass *pm, scalar_t child_len);
-static inline atomic octant_id_t *octant_child_threadsafe(struct octant *octant,
-	uint8_t idx);
+static inline bool octant_is_recentered(const struct octant *octant);
 
 /* Octant insertion */
 
@@ -104,7 +108,7 @@ octant_tree_init(const struct particle particles[static particle_count],
 	octant_arena_reset(&octant_arena);
 
 	const octant_id_t id = octant_arena_alloc(&octant_arena);
-	if (unlikely(id == invalid_id))
+	if (unlikely(id == octant_invalid_id))
 		abort_oom();
 
 	struct octant *root = octant_arena_resolve(&octant_arena, id);
@@ -148,7 +152,7 @@ octant_insert_threadsafe(struct octant *octant, const struct point_mass *pm,
 		const octant_id_t id = octant_insert_leaf_threadsafe(octant, pm,
 			&insertion, cache);
 
-		if (id != invalid_id)
+		if (id != octant_invalid_id)
 			octant_insert_child_threadsafe(octant, &octant->center, child_len,
 				cache);
 	}
@@ -235,7 +239,7 @@ octant_update_accel(const struct octant *octant, const struct point_mass *pm,
 	}
 
 	for (unsigned i = 0; i < octant_children; i++) {
-		if (unlikely(octant->children[i] == invalid_id))
+		if (unlikely(octant->children[i] == octant_invalid_id))
 			continue;
 
 		const octant_id_t id = octant->children[i];
@@ -284,18 +288,10 @@ octant_insert_leaf(struct octant *octant, const struct point_mass *pm,
 static inline bool
 octant_is_leaf(const struct octant *octant)
 {
-	const enum octant_flags_t flags = atomic_load_explicit(octant_flags(octant),
-		memory_order_relaxed);
-	return flags == OCTANT_IS_LEAF;
+	return octant->flags == OCTANT_IS_LEAF;
 }
 
-static inline bool
-octant_is_recentered(const struct octant *octant)
-{
-	const enum octant_flags_t flags = atomic_load_explicit(octant_flags(octant),
-		memory_order_relaxed);
-	return flags == OCTANT_IS_NODE_RECENTERED;
-}
+/* Octant insertion (threadsafe) */
 
 static void
 octant_insert_child_threadsafe(struct octant *octant,
@@ -326,16 +322,18 @@ octant_insert_leaf_threadsafe(struct octant *octant,
 	const octant_id_t id = octant_cache_alloc(cache);
 	struct octant *child = octant_arena_resolve(&octant_arena, id);
 	if (unlikely(child == nullptr))
-		abort_oom();
+		unreachable();
+
+	octant_init(child, pm, insertion->corner);
 
 	atomic octant_id_t *ptr = octant_child_threadsafe(octant,
 		insertion->child_idx);
-	octant_id_t expected = invalid_id;
+	octant_id_t expected = octant_invalid_id;
 	const bool success = atomic_compare_exchange_strong_explicit(ptr, &expected,
 		id, memory_order_release, memory_order_acquire);
 
 	if (likely(success))
-		return invalid_id;
+		return octant_invalid_id;
 
 	/*
 	 * If the CAS failed and another non-null octant ID was found at the
@@ -412,6 +410,48 @@ octant_try_absorb_threadsafe(struct octant *octant, const struct point_mass *pm,
 	return true;
 }
 
+static inline bool
+octant_is_leaf_threadsafe(const struct octant *octant)
+{
+	enum octant_flags_t flags = atomic_load_explicit(octant_flags(octant),
+		memory_order_relaxed);
+
+	while (true) {
+		if (flags == OCTANT_IS_BUSY) {
+			futex_wait(octant_flags_uint32(octant), OCTANT_IS_BUSY);
+			flags = atomic_load_explicit(octant_flags(octant),
+				memory_order_relaxed);
+			continue;
+		}
+
+		return flags == OCTANT_IS_LEAF;
+	}
+}
+
+static inline atomic octant_id_t
+*octant_child_threadsafe(struct octant *octant, uint8_t idx)
+{
+	return (atomic octant_id_t *)&(octant)->children[(idx)];
+}
+
+static inline bool
+octant_absorbs(const struct octant *octant, const struct point_mass *pm,
+	scalar_t child_len)
+{
+	return scalar_eql(child_len, 0.0) ||
+		vec3_eql(&octant->center.pos, &pm->pos);
+}
+
+static inline bool
+octant_is_recentered(const struct octant *octant)
+{
+	const enum octant_flags_t flags = atomic_load_explicit(octant_flags(octant),
+		memory_order_relaxed);
+	return flags == OCTANT_IS_NODE_RECENTERED;
+}
+
+/* Octant insertion */
+
 static struct octant_insertion
 octant_insertion_prepare(const struct octant *octant,
 	const struct point_mass *pm, scalar_t child_len)
@@ -442,20 +482,6 @@ octant_insertion_prepare(const struct octant *octant,
 		insertion.corner.y = octant->corner.y;
 
 	return insertion;
-}
-
-static inline bool
-octant_absorbs(const struct octant *octant, const struct point_mass *pm,
-	scalar_t child_len)
-{
-	return scalar_eql(child_len, 0.0) ||
-		vec3_eql(&octant->center.pos, &pm->pos);
-}
-
-static inline atomic octant_id_t
-*octant_child_threadsafe(struct octant *octant, uint8_t idx)
-{
-	return (atomic octant_id_t *)&(octant)->children[(idx)];
 }
 
 /* Octant cache */
@@ -491,9 +517,17 @@ octant_arena_init(struct octant_arena *arena,
 
 	const size_t octants_per_node = octant_count / numa_node_count;
 	for (unsigned i = 0; i < numa_node_count; i++) {
-		arena->nodes[i].start = octants_per_node * i;
-		arena->nodes[i].end = arena->nodes[i].start + octants_per_node;
-		arena->nodes[i].idx = 0;
+#ifdef OPTION_LARGE_SIMULATION
+	const octant_id_t start = memory + (octants_per_node * i);
+#else
+		const octant_id_t start = octants_per_node * i;
+#endif /* OPTION_LARGE_SIMULATION */
+		arena->nodes[i] = (struct octant_arena_node){
+			.start = start,
+			.end = start + octants_per_node,
+			.len = octants_per_node,
+			.idx = 0,
+		};
 	}
 }
 
@@ -501,38 +535,39 @@ static inline void
 octant_arena_reset(struct octant_arena *arena)
 {
 	for (unsigned i = 0; i < arena->node_count; i++)
-		arena->nodes[i].idx = arena->nodes[i].start;
+		arena->nodes[i].idx = 0;
 }
 
 static inline octant_id_t
 octant_arena_alloc(struct octant_arena *arena)
 {
 	struct octant_arena_node *node = &arena->nodes[numa_node_id];
-	if (node->idx >= node->end)
-		return invalid_id;
+	if (node->idx >= node->len)
+		return octant_invalid_id;
 
-	octant_id_t id = node->idx;
+	const octant_extent_t idx = node->idx;
 	node->idx += 1;
 
-	return id;
+	return node->start + idx;
 }
 
 static inline octant_id_t
 octant_arena_alloc_n_threadsafe(struct octant_arena *arena, unsigned n)
 {
 	struct octant_arena_node *node = &arena->nodes[numa_node_id];
-	octant_id_t atomic *ptr = (octant_id_t atomic *)&node->idx;
+	atomic octant_extent_t *ptr = (atomic octant_extent_t *)&node->idx;
 
-	if (atomic_load_explicit(ptr, memory_order_relaxed) >= node->end)
-		return invalid_id;
+	if (atomic_load_explicit(ptr, memory_order_relaxed) >= node->len)
+		return octant_invalid_id;
 
-	octant_id_t id = atomic_fetch_add_explicit(ptr, n, memory_order_relaxed);
-	octant_id_t end = id + n;
+	octant_extent_t start_idx = atomic_fetch_add_explicit(ptr, n,
+		memory_order_relaxed);
+	octant_extent_t end_idx = start_idx + n;
 
-	if (end >= node->end)
-		return invalid_id;
+	if (end_idx >= node->end)
+		return octant_invalid_id;
 
-	return id;
+	return node->start + start_idx;
 }
 
 static inline struct octant *
@@ -541,8 +576,8 @@ octant_arena_resolve(struct octant_arena *arena, octant_id_t id)
 #ifdef OPTION_LARGE_SIMULATION
 	return id;
 #else
-	assert(id == invalid_octant || id < ocant_count, "invalid octant ID");
-	if (id == invalid_id)
+	assert(id == octant_invalid_id || id < octant_count, "invalid octant ID");
+	if (id == octant_invalid_id)
 		return (nullptr);
 	return &arena->memory[id];
 #endif /* OPTION_LARGE_SIMULATION */

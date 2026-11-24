@@ -136,7 +136,6 @@ run_simulation(void *args)
 				return -1;
 
 			print_step(step, build_us, simulate_us);
-			octant_arena_reset(&octant_arena);
 		}
 	}
 }
@@ -214,7 +213,7 @@ has_next_step(unsigned step)
 }
 
 static inline long
-tv_us_diff(const struct timespec *start, const struct *end)
+tv_us_diff(const struct timespec *start, const struct timespec *end)
 {
 	const long delta_sec = (long)(end->tv_sec - start->tv_sec);
 	const long delta_nsec = (long)(end->tv_nsec - start->tv_nsec);
