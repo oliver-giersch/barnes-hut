@@ -11,9 +11,9 @@
 #define likely(cond) __builtin_expect(!!(cond), 1)
 #define unlikely(cond) __builtin_expect(!!(cond), 0)
 #define aligned(align) __attribute__((aligned((align))))
-#define printf_like __attribute__((format(printf, 1, 2)))
+#define printf_like_n(n, m) __attribute__((format(printf, (n), (m))))
+#define printf_like printf_like_n(1, 2)
 #define noreturn void __attribute__((__noreturn__))
-#define unreachable() __builtin_unreachable()
 #define unused __attribute__((unused))
 
 /* Build options */
@@ -48,7 +48,9 @@
 	static constexpr bool render = false;
 #endif /* OPTION_RENDER */
 
-static constexpr unsigned cache_line_size = 64;
+enum {
+	cache_line_size = 64,
+};
 
 /* Aborts the process on an OOM condition. */
 #define abort_oom() __abort_oom(__FILE__, __func__, __LINE__)

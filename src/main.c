@@ -1,3 +1,5 @@
+#include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <threads.h>
@@ -26,6 +28,8 @@ static constexpr uintptr_t vm_range_start = 0x0000100000000000ULL;
 static constexpr uintptr_t vm_range_end = 0x0000800000000000ULL;
 
 static error_t run_simulation(void *args);
+static void sort_particles(struct thread_pool *pool,
+	struct particle particles[static particle_count], long *sort_us);
 static void build_tree(struct thread_pool *pool,
 	const struct particle particles[static particle_count], scalar_t radius,
 	long *build_us);
@@ -35,14 +39,19 @@ static void *mmap_memory(size_t size, error_t *error);
 
 static void print_build_options(void);
 static void print_options(void);
-static void print_build(unsigned step, scalar_t radius, long build_us,
-	long simulate_us);
-static void print_step(unsigned step, long build_us, long simulate_us);
+static inline void print_header(unsigned step);
+static inline void print_sort(long sort_us);
+static inline void print_build(long build_us);
+static inline void print_step(unsigned step, scalar_t radius, long sort_us,
+	long build_us, long simulate_us);
+printf_like_n(3, 4) static char *bump_printf(char **ptr, const char *end,
+	const char *fmt, ...);
 
 static inline size_t universe_size(size_t particles, unsigned threads);
 static inline bool has_next_step(unsigned step);
 static inline long tv_us_diff(const struct timespec *start,
 	const struct timespec *end);
+static inline double us2s(long us);
 
 extern int
 main(int argc, char *argv[static argc])
@@ -54,6 +63,9 @@ main(int argc, char *argv[static argc])
 		return 0;
 	else if (error != 0)
 		return error;
+
+	print_build_options();
+	print_options();
 
 	/* Determine NUMA topology (if enabled). */
 	if ((error = numa_init(options->threads, NUMA_ROUND_ROBIN, false)) < 0)
@@ -123,14 +135,16 @@ run_simulation(void *args)
 	unsigned step = 0;
 	while (has_next_step(step)) {
 		for (unsigned step = 0; has_next_step(step); step++) {
-			long sort_us = 0;
-			if (options->sort_steps != 0 && step % options->sort_steps == 0) {
+			long sort_us = -1;
+
+			print_header(step);
+			if (options->sort_steps != 0 && step % options->sort_steps == 0)
 				sort_particles(pool, particles, &sort_us);
-				print_sort(sort_us);
-			}
+			print_sort(sort_us);
 
 			long build_us;
 			build_tree(pool, particles, radius, &build_us);
+			print_build(build_us);
 
 			if (!render_wait())
 				return -1;
@@ -144,6 +158,16 @@ run_simulation(void *args)
 			print_step(step, build_us, simulate_us);
 		}
 	}
+}
+
+static void
+sort_particles(struct thread_pool *pool,
+	struct particle particles[static particle_count], long *sort_us)
+{
+	// TODO: implement, dumb qsort?
+	// TODO: half-dumb qsort -> each thread pre-sorts slice, then sort again on 1 core.
+
+	*sort_us = 0;
 }
 
 static void
@@ -258,16 +282,133 @@ print_build_options(void)
 	render = true;
 #endif /* OPTION_RENDER */
 
-	static constexpr char *fmt =
-		"build options\n\"
-		"\tdouble_precision: %d\n\"
-		"\tlarge_simulation: %d\n\"
-		"\tnuma_aware:       %d\n\"
-		"\tprint_progress:   %d\n\
-		"\trender:           %d\n\n\";
+	static constexpr char fmt[] =
+		"build options\n"
+		"\tdouble_precision: %d\n"
+		"\tlarge_simulation: %d\n"
+		"\tnuma_aware:       %d\n"
+		"\tprint_progress:   %d\n"
+		"\trender:           %d\n\n";
 
 	fprintf(stderr, fmt, double_precision, large_simulation, numa_aware,
 		print_progress, render);
+}
+
+static void
+print_options(void)
+{
+	char buf[128];
+
+	if (options->verbose)
+		return;
+
+	static constexpr char fmt[] =
+		"options\n"
+		"\tsteps:      %s\n"
+		"\tparticles:  %zu\n"
+		"\tmass:       %f\n"
+		"\tradius:     %f\n"
+		"\tthreads:    %s\n"
+		"\tseed:       %d\n"
+		"\tsort_steps: %s\n"
+		"\tflat:       %s\n"
+		"\tverbose:    %s\n"
+		"\ttheta:      %f\n"
+		"\tdt:         %f\n"
+		"\tfile:       %s\n"
+		"\tdump:       %s\n\n";
+
+	static const char *booleans[] = {
+		[false] = "false",
+		[true] = "true",
+	};
+
+	char *ptr = buf;
+	const char *steps = (options->steps > 0)
+		? bump_printf(&ptr, buf + sizeof(buf), "%u", options->steps)
+		: bump_printf(&ptr, buf + sizeof(buf), "%s", "unlimited");
+	const char *threads = (options->threads > 0)
+		? bump_printf(&ptr, buf + sizeof(buf), "%u", options->threads)
+		: bump_printf(&ptr, buf + sizeof(buf), "%s", "maximum");
+	const char *sort_steps = (options->sort_steps > 0)
+		? bump_printf(&ptr, buf + sizeof(buf), "%u", options->sort_steps)
+		: bump_printf(&ptr, buf + sizeof(buf), "%s", "disabled");
+
+	fprintf(stderr, fmt, steps, options->particles, options->mass,
+		options->radius, threads, options->seed, sort_steps,
+		booleans[options->flat], booleans[options->verbose], options->theta,
+		options->dt, options->file, booleans[options->dump]);
+}
+
+static void
+print_header(unsigned step)
+{
+	if (options->verbose)
+		return;
+
+	fprintf(stderr, "step t = %u\n", step);
+}
+
+static inline void
+print_sort(long sort_us)
+{
+	if (!options->verbose)
+		return;
+
+	if (sort_us < 0)
+		fprintf(stderr, "\tsort:\t%15s %15s\n", "N/A", "N/A");
+	else
+		fprintf(stderr, "\tsort:\t%12ld us %8.2f s\n", sort_us, us2s(sort_us));
+}
+
+static inline void
+print_build(long build_us)
+{
+	if (!options->verbose)
+		return;
+
+	fprintf(stderr, "\tbuild:\t%12ld us %8.2f s\n", build_us, us2s(build_us));
+}
+
+static inline void
+print_step(unsigned step, scalar_t radius, long sort_us, long build_us,
+	long simulate_us)
+{
+	fprintf(stdout, "%u,%ld,%ld,%ld\n", step, sort_us, build_us, simulat_us);
+}
+
+printf_like_n(3, 4)
+static inline char *bump_printf(char **ptr, const char *end,
+	const char *fmt, ...)
+{
+	if (*ptr == nullptr)
+		return nullptr;
+
+	const size_t room = (size_t)(end - *ptr);
+	if (room == 0) {
+		*ptr = nullptr;
+		return nullptr;
+	}
+
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(*ptr, room, fmt, ap);
+	va_end(ap);
+
+	if (n < 0 || (size_t)n >= room) {
+		*ptr = nullptr;
+		return nullptr;
+	}
+
+	char *str = *ptr;
+	*ptr += n + 1;
+	return str;
+}
+
+static inline double
+us2s(long us)
+{
+	return (double)us / 1'000'000;
 }
 
 extern noreturn

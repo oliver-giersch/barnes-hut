@@ -4,11 +4,17 @@
 #include "barnes-hut/def.h"
 #include "barnes-hut/types.h"
 
+/*
+ * The set of accepted program arguments and options.
+ *
+ * Any options marked with a letter use that letter as CLI short argument.
+ * All othes require a long CLI argument of the same name.
+ */
 struct options {
     /* (t) The number of simulation steps to compute (0 = infinite) */
     unsigned steps;
     /* (n) The total number of particles the universe contains.  */
-    unsigned particles;
+    size_t particles;
     /* (m) The mass of each particle */
     double mass;
     /* (r) The initial radius of the universe */
@@ -25,9 +31,13 @@ struct options {
     bool verbose;
     /* (-) ... */
     scalar_t theta;
+    /* (-) ... */
     scalar_t dt;
+    /* (-) ... */
     const char *file;
+    /* (-) ... */
     bool dump;
+    /* ... */
     bool no_render;
 };
 

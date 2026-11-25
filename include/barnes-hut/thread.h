@@ -81,7 +81,7 @@ extern void thread_pool_destroy(struct thread_pool *pool);
 extern void thread_pool_randomize(struct thread_pool *pool,
 	struct particle particles[static particle_count], scalar_t radius);
 extern scalar_t thread_pool_build(struct thread_pool *pool,
-	struct particle particles[static particle_count], scalar_t radius);
+	const struct particle particles[static particle_count], scalar_t radius);
 extern scalar_t thread_pool_simulate(struct thread_pool *pool);
 
 #endif /* BARNES_HUT_THREAD_H */
