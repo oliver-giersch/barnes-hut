@@ -11,7 +11,7 @@
 
 static struct options options_storage = {
 	.steps = 10,
-	.particles = 100'000;
+	.particles = 100'000,
 	.verbose = false,
 	.flat = false,
 };

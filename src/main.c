@@ -35,7 +35,7 @@ static void build_tree(struct thread_pool *pool,
 	long *build_us);
 static scalar_t simulate(struct thread_pool *pool, long *simulate_us);
 /* Allocates `size` bytes in an exclusive 16TiB range of virtual memory. */
-static void *mmap_memory(size_t size, error_t *error);
+static void *mmap_memory(size_t count, size_t size, error_t *error);
 
 static void print_build_options(void);
 static void print_options(void);
@@ -74,13 +74,21 @@ main(int argc, char *argv[static argc])
 
 	/* Allocate (mmap) particle memory. */
 	particle_count = options->particles;
-	struct particle *particles = mmap_memory(particle_count, &error);
+	struct particle *particles = mmap_memory(particle_count,
+		sizeof(struct particle), &error);
 	if (particles == nullptr)
+		return error;
+
+	/* The particle array is predominantely accessed as a sequential stream. */
+	error = madvise((void *)particles, particle_count * sizeof(struct particle),
+		MADV_SEQUENTIAL);
+	if (error)
 		return error;
 
 	/* Allocate (mmap) octant memory. */
 	const size_t arena_size = universe_size(particle_count, threads);
-	struct octant *octants = mmap_memory(arena_size, &error);
+	struct octant *octants = mmap_memory(arena_size, sizeof(struct octant),
+		&error);
 	if (octants == nullptr)
 		return error;
 
@@ -124,10 +132,7 @@ destroy_numa:
 static error_t
 run_simulation(void *args)
 {
-	struct context *ctx;
-
-	ctx = (struct context *)args;
-
+	struct context *ctx = (struct context *)args;
 	struct thread_pool *pool = ctx->pool;
 	struct particle *particles = ctx->particles;
 	scalar_t radius = ctx->radius;
@@ -155,9 +160,11 @@ run_simulation(void *args)
 			if (!render_wake(radius))
 				return -1;
 
-			print_step(step, build_us, simulate_us);
+			print_step(step, radius, sort_us, build_us, simulate_us);
 		}
 	}
+
+	return (0);
 }
 
 static void
@@ -165,7 +172,8 @@ sort_particles(struct thread_pool *pool,
 	struct particle particles[static particle_count], long *sort_us)
 {
 	// TODO: implement, dumb qsort?
-	// TODO: half-dumb qsort -> each thread pre-sorts slice, then sort again on 1 core.
+	// TODO: half-dumb qsort -> each thread pre-sorts slice, then sort again on
+	// 1 core.
 
 	*sort_us = 0;
 }
@@ -198,12 +206,16 @@ simulate(struct thread_pool *pool, long *simulate_us)
 }
 
 static void *
-mmap_memory(size_t size, error_t *error)
+mmap_memory(size_t count, size_t size, error_t *error)
 {
 	static uintptr_t next_addr = vm_range_start;
 	uintptr_t addr;
 
 	*error = ENOMEM;
+	const size_t len = count * size;
+	if (len < count)
+		return nullptr;
+
 	for (addr = next_addr; addr <= vm_range_end; addr += vm_range_start) {
 		void *ptr = mmap((void *)addr, size, PROT_READ | PROT_WRITE,
 			MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
@@ -225,9 +237,7 @@ universe_size(size_t particles, unsigned threads)
 {
 	const size_t min_size = threads * octant_cache_len;
 	const size_t max_size = octant_arena_max_size;
-	const size_t size = (particles < particles * 3)
-		? particles * 3
-		: max_size;
+	const size_t size = (particles < particles * 3) ? particles * 3 : max_size;
 
 	if (size < min_size)
 		return min_size;
@@ -374,11 +384,10 @@ static inline void
 print_step(unsigned step, scalar_t radius, long sort_us, long build_us,
 	long simulate_us)
 {
-	fprintf(stdout, "%u,%ld,%ld,%ld\n", step, sort_us, build_us, simulat_us);
+	fprintf(stdout, "%u,%ld,%ld,%ld\n", step, sort_us, build_us, simulate_us);
 }
 
-printf_like_n(3, 4)
-static inline char *bump_printf(char **ptr, const char *end,
+printf_like_n(3, 4) static inline char *bump_printf(char **ptr, const char *end,
 	const char *fmt, ...)
 {
 	if (*ptr == nullptr)

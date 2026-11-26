@@ -3,6 +3,7 @@
 
 #include <limits.h>
 #include <stdatomic.h>
+#include <stdint.h>
 
 #include "barnes-hut/def.h"
 #include "barnes-hut/types.h"
