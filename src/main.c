@@ -44,7 +44,7 @@ static inline void print_sort(long sort_us);
 static inline void print_build(long build_us);
 static inline void print_step(unsigned step, scalar_t radius, long sort_us,
 	long build_us, long simulate_us);
-printf_like_n(3, 4) static char *bump_printf(char **ptr, const char *end,
+attr_printf_like_n(3, 4) static char *bump_printf(char **ptr, const char *end,
 	const char *fmt, ...);
 
 static inline size_t universe_size(size_t particles, unsigned threads);
@@ -387,8 +387,8 @@ print_step(unsigned step, scalar_t radius, long sort_us, long build_us,
 	fprintf(stdout, "%u,%ld,%ld,%ld\n", step, sort_us, build_us, simulate_us);
 }
 
-printf_like_n(3, 4) static inline char *bump_printf(char **ptr, const char *end,
-	const char *fmt, ...)
+attr_printf_like_n(3, 4) static inline char *bump_printf(char **ptr,
+	const char *end, const char *fmt, ...)
 {
 	if (*ptr == nullptr)
 		return nullptr;
@@ -420,7 +420,7 @@ us2s(long us)
 	return (double)us / 1'000'000;
 }
 
-extern noreturn
+extern attr_noreturn
 __panic(const char *file, const char *function, int line, const char *condition,
 	const char *message)
 {

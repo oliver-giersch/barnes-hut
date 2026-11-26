@@ -19,4 +19,13 @@ futex_wake_all(atomic_uint32_t *ptr)
 	return futex_wake(ptr, INT_MAX);
 }
 
+#if defined(__linux__)
+#include "barnes-hut/futex/linux.h"
+#elif defined(__FreeBSD__)
+#include "barnes-hut/futex/freebsd.h"
+#else
+#error "unsupported OS"
+#endif /* __linux__ || __FreeBSD__ */
+
 #endif /* BARNES_HUT_FUTEX_H */
+

@@ -45,6 +45,5 @@ struct options {
 extern const struct options *options;
 
 extern error_t options_parse(int argc, char *argv[argc]);
-extern printf_like void verbose_printf(const char *fmt, ...);
 
 #endif /* BARNES_HUT_OPTIONS_H */

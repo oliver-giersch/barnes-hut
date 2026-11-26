@@ -36,11 +36,11 @@ struct thread_pool_worker {
 		thrd_t thread;
 		unsigned idx;
 		bool is_ready;
-	} aligned(cache_line_size);
+	} attr_cache_line_aligned;
 
 	struct {
 		struct thread_notify state;
-	} aligned(cache_line_size);
+	} attr_cache_line_aligned;
 
 	struct {
 		struct particle *particles;
@@ -48,7 +48,7 @@ struct thread_pool_worker {
 		size_t particle_count;
 		error_t error;
 		scalar_t len;
-	} aligned(cache_line_size);
+	} attr_cache_line_aligned;
 };
 
 struct thread_pool {
@@ -56,21 +56,21 @@ struct thread_pool {
 		struct thread_pool_worker main_worker;
 		size_t step_task_size;
 		size_t sort_task_size;
-	} aligned(64);
+	} attr_cache_line_aligned;
 
 	struct {
 		struct thread_notify running_count;
-	} aligned(64);
+	} attr_cache_line_aligned;
 
 	// FIXME: remove
 	struct {
 		atomic size_t work_idx;
-	} aligned(64);
+	} attr_cache_line_aligned;
 
 	struct {
 		atomic size_t work_idx;
 		size_t max;
-	} aligned(64) task_nodes[numa_max_nodes];
+	} attr_cache_line_aligned task_nodes[numa_max_nodes];
 
 	size_t worker_count;
 	struct thread_pool_worker *workers[];

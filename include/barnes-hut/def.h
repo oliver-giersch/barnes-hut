@@ -10,11 +10,12 @@
 #define atomic _Atomic
 #define likely(cond) __builtin_expect(!!(cond), 1)
 #define unlikely(cond) __builtin_expect(!!(cond), 0)
-#define aligned(align) __attribute__((aligned((align))))
-#define printf_like_n(n, m) __attribute__((format(printf, (n), (m))))
-#define printf_like printf_like_n(1, 2)
-#define noreturn void __attribute__((__noreturn__))
-#define unused __attribute__((unused))
+#define attr_aligned(align) __attribute__((aligned((align))))
+#define attr_cache_line_aligned attr_aligned(cache_line_size)
+#define attr_printf_like_n(n, m) __attribute__((format(printf, (n), (m))))
+#define attr_printf_like printf_like_n(1, 2)
+#define attr_noreturn void __attribute__((__noreturn__))
+#define attr_unused __attribute__((unused))
 
 /* Build options */
 
@@ -69,9 +70,10 @@ enum {
 #define assert(cond, message) ((void)0)
 #endif /* NDEBUG */
 
-extern noreturn __panic(const char *file, const char *function, int line,
+extern attr_noreturn __panic(const char *file, const char *function, int line,
 	const char *condition, const char *message);
-extern noreturn __abort_oom(const char *file, const char *function, int line);
+extern attr_noreturn __abort_oom(const char *file, const char *function,
+	int line);
 
 static inline void
 cpu_relax(void)
