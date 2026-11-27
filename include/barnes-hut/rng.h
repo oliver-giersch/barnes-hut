@@ -48,7 +48,10 @@ rng_next(struct rng_state *rng)
 static inline scalar_t
 rng_next_scalar(struct rng_state *rng)
 {
-	return 0.0;
+	static constexpr scalar_t max_scalar = (scalar_t)UINT64_MAX;
+
+	const scalar_t result = (scalar_t)rng_next(rng) / max_scalar;
+	return result;
 }
 
 static inline uint64_t

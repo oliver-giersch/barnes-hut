@@ -97,7 +97,7 @@ main(int argc, char *argv[static argc])
 	octant_arena_init(&octant_arena, octants);
 
 	/* Initialize the thread pool. */
-	struct thread_pool *pool = thread_pool_init(threads);
+	struct thread_pool *pool = thread_pool_init(particles, threads);
 	if (pool == nullptr)
 		goto destroy_numa;
 

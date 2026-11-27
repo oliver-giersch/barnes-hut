@@ -5,6 +5,7 @@
 #include <threads.h>
 
 #include "barnes-hut/def.h"
+#include "barnes-hut/futex.h"
 #include "barnes-hut/numa.h"
 #include "barnes-hut/physics.h"
 #include "barnes-hut/types.h"
@@ -39,7 +40,7 @@ struct thread_pool_worker {
 	} attr_cache_line_aligned;
 
 	struct {
-		struct thread_notify state;
+		atomic_uint32_t state;
 	} attr_cache_line_aligned;
 
 	struct {
@@ -52,31 +53,31 @@ struct thread_pool_worker {
 };
 
 struct thread_pool {
+	/* Thread pool constants. */
+	struct {
+		/* The global particle array. */
+		struct particle *particles;
+		/* ... */
+		size_t step_task_size;
+		/* ... */
+		size_t worker_count;
+	} attr_cache_line_aligned;
+
 	struct {
 		struct thread_pool_worker main_worker;
-		size_t step_task_size;
-		size_t sort_task_size;
-	} attr_cache_line_aligned;
-
-	struct {
-		struct thread_notify running_count;
-	} attr_cache_line_aligned;
-
-	// FIXME: remove
-	struct {
-		atomic size_t work_idx;
+		atomic_uint32_t running_count;
 	} attr_cache_line_aligned;
 
 	struct {
 		atomic size_t work_idx;
-		size_t max;
+		size_t start, end;
 	} attr_cache_line_aligned task_nodes[numa_max_nodes];
 
-	size_t worker_count;
 	struct thread_pool_worker *workers[];
 };
 
-extern struct thread_pool *thread_pool_init(size_t threads);
+extern struct thread_pool *thread_pool_init(
+	struct particle particles[static particle_count], size_t threads);
 extern void thread_pool_destroy(struct thread_pool *pool);
 extern void thread_pool_randomize(struct thread_pool *pool,
 	struct particle particles[static particle_count], scalar_t radius);

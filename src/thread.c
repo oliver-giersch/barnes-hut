@@ -11,6 +11,7 @@
 #include "barnes-hut/octree.h"
 #include "barnes-hut/options.h"
 #include "barnes-hut/physics.h"
+#include "barnes-hut/rng.h"
 #include "barnes-hut/types.h"
 
 static constexpr size_t thread_pool_alignment = 4096;
@@ -50,6 +51,8 @@ struct thread_ctx {
 	unsigned idx;
 };
 
+static inline size_t thread_pool_step_size(size_t total_size,
+	size_t worker_count);
 static inline void *thread_ctx_compose(struct thread_pool *pool, unsigned idx);
 static inline struct thread_ctx thread_ctx_decompose(void *ctx);
 
@@ -72,7 +75,8 @@ static void progress_bar_print(struct progress_bar *bar,
 	const struct thread_pool_worker *worker);
 
 extern struct thread_pool *
-thread_pool_init(size_t threads)
+thread_pool_init(struct particle particles[static particle_count],
+	size_t threads)
 {
 	error_t error;
 
@@ -84,18 +88,27 @@ thread_pool_init(size_t threads)
 		? thread_pool_alignment
 		: (thread_pool_size / thread_pool_alignment) * thread_pool_alignment;
 
-	struct thread_pool *pool
-		= aligned_alloc(thread_pool_alignment, thread_pool_size);
+	struct thread_pool *pool = aligned_alloc(thread_pool_alignment,
+		thread_pool_size);
 	if (pool == nullptr)
 		return nullptr;
 
-	/* Initialize the pool and main worker notify instances. */
-	if ((error = thread_notify_init(&pool->running_count)))
-		goto error_exit;
-	if ((error = thread_notify_init(&pool->main_worker.state)))
-		goto error_exit;
-
 	/* Initialize the main thread worker and pool. */
+	pool->particles = particles;
+	pool->step_task_size = thread_pool_step_size(particle_count, threads);
+	pool->worker_count = threads;
+
+	pool->main_worker.pool = pool;
+	pool->main_worker.thread = thrd_current();
+	pool->main_worker.is_ready = false;
+	pool->main_worker.state = THREAD_IDLE;
+	pool->running_count = (uint32_t)(threads - 1);
+
+	const size_t particles_per_node = particle_count / numa_node_count;
+	const size_t remainder = particle_count - (particles_per_node * numa_node_count);
+	for (unsigned i = 0; i < numa_node_count; i++)
+		
+
 	pool->worker_count = threads;
 	pool->workers[0] = &pool->main_worker;
 	pool->running_count.state = threads - 1;
@@ -134,7 +147,7 @@ thread_pool_destroy(struct thread_pool *pool)
 
 extern scalar_t
 thread_pool_build(struct thread_pool *pool,
-	struct particle particles[static particle_count], scalar_t radius)
+	const struct particle particles[static particle_count], scalar_t radius)
 {
 	struct octant *root = octant_tree_init(particles, radius);
 	const scalar_t len = radius * 2.0;
@@ -282,7 +295,7 @@ out:
 	return (error);
 }
 
-struct void
+static void
 thread_pool_worker_randomize(struct thread_pool_worker *worker, size_t len,
 	struct particle particles[static len], scalar_t radius)
 {
@@ -380,6 +393,21 @@ thread_notify_wake_all(struct thread_notify *notify)
 }
 
 /* Utility */
+
+static inline size_t
+thread_pool_step_size(size_t total_size, size_t worker_count)
+{
+	static constexpr size_t min_count = 4096;
+	static constexpr size_t tasks_per_worker = 128;
+
+	const size_t count_per_worker = total_size
+		/ (worker_count * tasks_per_worker);
+
+	if (count_per_worker < min_count)
+		return (min_count);
+	else
+		count_per_worker;
+}
 
 static inline void *
 thread_ctx_compose(struct thread_pool *pool, unsigned idx)
