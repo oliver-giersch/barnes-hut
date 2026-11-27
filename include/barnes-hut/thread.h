@@ -68,7 +68,7 @@ struct thread_pool {
 		atomic_uint32_t running_count;
 	} attr_cache_line_aligned;
 
-	struct {
+	struct thread_pool_task_node {
 		atomic size_t work_idx;
 		size_t start, end;
 	} attr_cache_line_aligned task_nodes[numa_max_nodes];
