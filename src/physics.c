@@ -9,6 +9,7 @@
 #include "barnes-hut/futex.h"
 #include "barnes-hut/numa.h"
 #include "barnes-hut/octree.h"
+#include "barnes-hut/rng.h"
 #include "barnes-hut/types.h"
 
 static constexpr scalar_t EPSILON = 1e-6;
@@ -95,10 +96,37 @@ static inline void vec3_assign_muladd(struct vec3 *restrict v,
 
 static inline bool scalar_eql(scalar_t a, scalar_t b);
 static inline scalar_t scalar_sq(scalar_t x);
-static inline scalar_t scalar_random(void);
 static inline scalar_t scalar_max(scalar_t a, scalar_t b);
 static inline scalar_t scalar_sqrt(scalar_t x);
 static inline scalar_t scalar_abs(scalar_t x);
+
+/* Particle */
+
+extern void
+particle_randomize(struct particle *particle, scalar_t radius, mass_t mass,
+	bool flat, struct rng_state *rng)
+{
+	const scalar_t r = radius;
+	const scalar_t r2 = r * r;
+
+	const scalar_t x = (2.0 * rng_next_scalar(rng) * r) - r;
+	const scalar_t y_max = sqrt(fmax(0.0, r2 - x * x));
+	const scalar_t y = (2.0 * rng_next_scalar(rng) * y_max) - y_max;
+	const scalar_t z_max = sqrt(fmax(0.0, r2 - x * x - y * y));
+	const scalar_t z = (!flat)
+		? 2.0 * rng_next_scalar(rng) * z_max - z_max
+		: 0.0;
+
+	*particle = (struct particle){
+		.pm = {
+			.pos = zero_vec,
+			.mass = mass,
+		},
+		.v = { x, y, z },
+	};
+}
+
+/* Octant */
 
 extern struct octant *
 octant_tree_init(const struct particle particles[static particle_count],

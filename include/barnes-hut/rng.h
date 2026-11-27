@@ -3,20 +3,20 @@
 
 #include <stdint.h>
 
+#include "barnes-hut/types.h"
+
 static constexpr int state_len = 4;
 
 struct rng_state {
 	uint64_t state[state_len];
 };
 
-static inline rng_seed(struct rng_state *rng, uint64_t seed);
-static inline rng_next(struct rng_state *rng);
+static inline void rng_seed(struct rng_state *rng, uint64_t seed);
+static inline uint64_t rng_next(struct rng_state *rng);
+static inline scalar_t rng_next_scalar(struct rng_state *rng);
 static inline uint64_t rotl(uint64_t x, int k);
 
-static inline rng_seed(struct rng_state *rng, uint64_t seed);
-static inline rng_next(struct rng_state *rng);
-
-static inline
+static inline void
 rng_seed(struct rng_state *rng, uint64_t seed)
 {
 	uint64_t z;
@@ -29,7 +29,7 @@ rng_seed(struct rng_state *rng, uint64_t seed)
 	}
 }
 
-static inline
+static inline uint64_t
 rng_next(struct rng_state *rng)
 {
 	const uint64_t result = rotl(rng->state[1] * 5, 7) * 9;
@@ -41,6 +41,14 @@ rng_next(struct rng_state *rng)
 	rng->state[0] ^= rng->state[3];
 	rng->state[2] ^= t;
 	rng->state[3] = rotl(rng->state[3], 45);
+
+	return result;
+}
+
+static inline scalar_t
+rng_next_scalar(struct rng_state *rng)
+{
+	return 0.0;
 }
 
 static inline uint64_t

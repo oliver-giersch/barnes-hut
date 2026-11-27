@@ -19,9 +19,10 @@ enum : error_t {
     ERROR_EXIT_EARLY	= 1,
 };
 
-struct vec3;
-struct particle;
 struct octant;
 struct octant_cache;
+struct particle;
+struct rng_state;
+struct vec3;
 
 #endif /* BARNES_HUT_TYPES_H */

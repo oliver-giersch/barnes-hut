@@ -284,9 +284,14 @@ out:
 
 struct void
 thread_pool_worker_randomize(struct thread_pool_worker *worker, size_t len,
-	struct particle particles[static len])
+	struct particle particles[static len], scalar_t radius)
 {
 	struct rng_state rng;
+
+	rng_seed(&rng, options->seed + worker->id);
+	for (size_t i = 0; i < len; i++)
+		particle_randomize(&particles[i], radius, options->mass,
+			options->flat, &rng);
 }
 
 static void

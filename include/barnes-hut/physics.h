@@ -28,6 +28,6 @@ struct particle {
 extern void particle_init(struct particle *particle, scalar_t x, scalar_t y,
 	scalar_t z, mass_t mass);
 extern void particle_randomize(struct particle *particle, scalar_t radius,
-	mass_t mass, bool flat);
+	mass_t mass, bool flat, struct rng_state *rng);
 
 #endif /* BARNES_HUT_PHYSICS_H */
