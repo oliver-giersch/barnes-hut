@@ -282,6 +282,13 @@ out:
 	return (error);
 }
 
+struct void
+thread_pool_worker_randomize(struct thread_pool_worker *worker, size_t len,
+	struct particle particles[static len])
+{
+	struct rng_state rng;
+}
+
 static void
 thread_pool_worker_build(struct thread_pool_worker *worker,
 	struct particle particles[], struct octant *root, scalar_t len)
