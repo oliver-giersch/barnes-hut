@@ -78,6 +78,7 @@ extern struct thread_pool *
 thread_pool_init(struct particle particles[static particle_count],
 	size_t threads)
 {
+	unsigned error_thread = 0;
 	error_t error;
 
 	/* Calculate the (dynamic) thread pool memory size. */
@@ -93,34 +94,46 @@ thread_pool_init(struct particle particles[static particle_count],
 	if (pool == nullptr)
 		return nullptr;
 
-	/* Initialize the main thread worker and pool. */
+	/* Initialize the pool constants. */
 	pool->particles = particles;
 	pool->step_task_size = thread_pool_step_size(particle_count, threads);
 	pool->worker_count = threads;
 
+	/* Initialize the main thread worker. */
 	pool->main_worker.pool = pool;
 	pool->main_worker.thread = thrd_current();
 	pool->main_worker.is_ready = false;
 	pool->main_worker.state = THREAD_IDLE;
 	pool->running_count = (uint32_t)(threads - 1);
 
+	/* Initialize the NUMA task distribution nodes. */
 	const size_t particles_per_node = particle_count / numa_node_count;
 	const size_t remainder = particle_count - (particles_per_node * numa_node_count);
-	for (unsigned i = 0; i < numa_node_count; i++)
-		
+	pool->task_nodes[0] = (struct thread_pool_task_node){
+		.work_idx = 0,
+		.start = 0,
+		end = particles_per_node + remainder,
+	};
 
-	pool->worker_count = threads;
+	for (unsigned i = 1; i < numa_node_count; i++)
+		const size_t start = pool->task_nodes[i - 1].end;
+		pool->task_nodes[i] = (struct thread_pool_task_node){
+			.work_idx = 0,
+			.start = end,
+			.end = end + particles_per_node,
+		};
+	}
+
 	pool->workers[0] = &pool->main_worker;
-	pool->running_count.state = threads - 1;
 
-	pool->main_worker.pool = pool;
-	pool->main_worker.thread = thrd_current();
-	pool->main_worker.is_ready = false;
-	pool->main_worker.state.state = THREAD_IDLE;
-
+	/* Create all worker threads. */
 	for (unsigned i = 1; i < threads; i++) {
 		error = thrd_create(&pool->workers[i]->thread, thread_pool_worker_main,
 			thread_ctx_compose(pool, i));
+		if (error) {
+			error_thread = i;
+			goto error_destroy_threads;
+		}
 	}
 
 	/* Wait until all worker threads have initialized their state. */
@@ -128,7 +141,14 @@ thread_pool_init(struct particle particles[static particle_count],
 
 	return pool;
 
-error_exit:
+error_destroy_threads:
+	for (unsigned i = 1; i < error_thread; i++) {
+		while (pool->workers[i] == nullptr)
+			cpu_relax();
+
+
+	}
+error_destroy_pool:
 	free_aligned_sized(pool, thread_pool_alignment, thread_pool_size);
 	return nullptr;
 }
@@ -344,6 +364,13 @@ thread_pool_worker_simulate(struct thread_pool_worker *worker,
 	while (thread_pool_next_batch(worker->pool, particles, &batch)) { }
 
 	progress_bar_destroy(&progress);
+}
+
+static void
+thread_pool_worker_exit(struct thread_pool_worker *worker)
+{
+	atomic_store_explicit(&worker->state, THREAD_EXIT);
+	futex_wake(&worker->state, 1);
 }
 
 /* Notify */
